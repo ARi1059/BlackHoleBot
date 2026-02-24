@@ -1,0 +1,547 @@
+# database/crud.py
+"""
+数据库 CRUD 操作
+"""
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, delete, func, or_
+from sqlalchemy.orm import selectinload
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+from .models import (
+    User, Collection, Media, SessionAccount, TransferTask,
+    TaskLog, Setting, AdminLog, UserRole, AccessLevel, TaskStatus
+)
+
+
+# ==================== User CRUD ====================
+
+async def get_user(db: AsyncSession, user_id: int) -> Optional[User]:
+    """根据 ID 获取用户"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_telegram_id(db: AsyncSession, telegram_id: int) -> Optional[User]:
+    """根据 Telegram ID 获取用户"""
+    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
+    return result.scalar_one_or_none()
+
+
+async def create_user(
+    db: AsyncSession,
+    telegram_id: int,
+    username: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    role: UserRole = UserRole.USER
+) -> User:
+    """创建新用户"""
+    user = User(
+        telegram_id=telegram_id,
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
+        role=role,
+        created_at=datetime.now(),
+        last_active_at=datetime.now()
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def update_user_role(db: AsyncSession, user_id: int, role: UserRole) -> bool:
+    """更新用户角色"""
+    result = await db.execute(
+        update(User).where(User.id == user_id).values(role=role)
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def ban_user(db: AsyncSession, user_id: int, is_banned: bool = True) -> bool:
+    """封禁/解封用户"""
+    result = await db.execute(
+        update(User).where(User.id == user_id).values(is_banned=is_banned)
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def update_user_last_active(db: AsyncSession, user_id: int):
+    """更新用户最后活跃时间"""
+    await db.execute(
+        update(User).where(User.id == user_id).values(last_active_at=datetime.now())
+    )
+    await db.commit()
+
+
+async def get_users(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20,
+    role: Optional[UserRole] = None,
+    search: Optional[str] = None
+) -> tuple[List[User], int]:
+    """获取用户列表"""
+    query = select(User)
+
+    # 过滤条件
+    if role:
+        query = query.where(User.role == role)
+    if search:
+        query = query.where(
+            or_(
+                User.username.ilike(f"%{search}%"),
+                User.first_name.ilike(f"%{search}%")
+            )
+        )
+
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # 分页
+    query = query.offset(skip).limit(limit).order_by(User.created_at.desc())
+    result = await db.execute(query)
+    users = result.scalars().all()
+
+    return users, total
+
+
+# ==================== Collection CRUD ====================
+
+async def get_collection(db: AsyncSession, collection_id: int) -> Optional[Collection]:
+    """根据 ID 获取合集"""
+    result = await db.execute(
+        select(Collection)
+        .options(selectinload(Collection.media))
+        .where(Collection.id == collection_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_collection_by_code(db: AsyncSession, deep_link_code: str) -> Optional[Collection]:
+    """根据深链接码获取合集"""
+    result = await db.execute(
+        select(Collection)
+        .options(selectinload(Collection.media))
+        .where(Collection.deep_link_code == deep_link_code)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_collection(
+    db: AsyncSession,
+    name: str,
+    deep_link_code: str,
+    description: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    access_level: AccessLevel = AccessLevel.PUBLIC,
+    created_by: Optional[int] = None
+) -> Collection:
+    """创建合集"""
+    collection = Collection(
+        name=name,
+        description=description,
+        tags=tags or [],
+        deep_link_code=deep_link_code,
+        access_level=access_level,
+        created_by=created_by,
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
+    db.add(collection)
+    await db.commit()
+    await db.refresh(collection)
+    return collection
+
+
+async def update_collection(
+    db: AsyncSession,
+    collection_id: int,
+    **kwargs
+) -> bool:
+    """更新合集信息"""
+    kwargs['updated_at'] = datetime.now()
+    result = await db.execute(
+        update(Collection).where(Collection.id == collection_id).values(**kwargs)
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def delete_collection(db: AsyncSession, collection_id: int) -> bool:
+    """删除合集"""
+    result = await db.execute(
+        delete(Collection).where(Collection.id == collection_id)
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def search_collections(
+    db: AsyncSession,
+    keyword: str,
+    user_role: UserRole = UserRole.USER,
+    skip: int = 0,
+    limit: int = 10
+) -> List[Collection]:
+    """搜索合集"""
+    query = select(Collection)
+
+    # 权限过滤
+    if user_role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VIP]:
+        query = query.where(Collection.access_level == AccessLevel.PUBLIC)
+
+    # 关键词搜索
+    query = query.where(
+        or_(
+            Collection.name.ilike(f"%{keyword}%"),
+            Collection.description.ilike(f"%{keyword}%"),
+            Collection.tags.contains([keyword])
+        )
+    )
+
+    query = query.offset(skip).limit(limit).order_by(Collection.created_at.desc())
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_collections(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20,
+    access_level: Optional[AccessLevel] = None,
+    search: Optional[str] = None
+) -> tuple[List[Collection], int]:
+    """获取合集列表"""
+    query = select(Collection)
+
+    if access_level:
+        query = query.where(Collection.access_level == access_level)
+    if search:
+        query = query.where(Collection.name.ilike(f"%{search}%"))
+
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # 分页
+    query = query.offset(skip).limit(limit).order_by(Collection.created_at.desc())
+    result = await db.execute(query)
+    collections = result.scalars().all()
+
+    return collections, total
+
+
+# ==================== Media CRUD ====================
+
+async def create_media(
+    db: AsyncSession,
+    collection_id: int,
+    file_id: str,
+    file_unique_id: str,
+    file_type: str,
+    order_index: int,
+    file_size: Optional[int] = None,
+    caption: Optional[str] = None
+) -> Media:
+    """创建媒体"""
+    media = Media(
+        collection_id=collection_id,
+        file_id=file_id,
+        file_unique_id=file_unique_id,
+        file_type=file_type,
+        file_size=file_size,
+        caption=caption,
+        order_index=order_index,
+        created_at=datetime.now()
+    )
+    db.add(media)
+    await db.commit()
+    await db.refresh(media)
+    return media
+
+
+async def get_media_by_collection(
+    db: AsyncSession,
+    collection_id: int,
+    skip: int = 0,
+    limit: int = 10
+) -> List[Media]:
+    """获取合集的媒体列表（分页）"""
+    result = await db.execute(
+        select(Media)
+        .where(Media.collection_id == collection_id)
+        .order_by(Media.order_index)
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_media_count(db: AsyncSession, collection_id: int) -> int:
+    """获取合集的媒体数量"""
+    result = await db.execute(
+        select(func.count()).where(Media.collection_id == collection_id)
+    )
+    return result.scalar()
+
+
+# ==================== SessionAccount CRUD ====================
+
+async def create_session_account(
+    db: AsyncSession,
+    phone_number: str,
+    api_id: int,
+    api_hash: str,
+    session_string: str,
+    priority: int = 0
+) -> SessionAccount:
+    """创建 Session 账号"""
+    session = SessionAccount(
+        phone_number=phone_number,
+        api_id=api_id,
+        api_hash=api_hash,
+        session_string=session_string,
+        priority=priority,
+        created_at=datetime.now()
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+async def get_session_account(db: AsyncSession, session_id: int) -> Optional[SessionAccount]:
+    """获取 Session 账号"""
+    result = await db.execute(
+        select(SessionAccount).where(SessionAccount.id == session_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_available_session(db: AsyncSession) -> Optional[SessionAccount]:
+    """获取可用的 Session 账号"""
+    now = datetime.now()
+    result = await db.execute(
+        select(SessionAccount)
+        .where(
+            SessionAccount.is_active == True,
+            or_(
+                SessionAccount.cooldown_until == None,
+                SessionAccount.cooldown_until < now
+            )
+        )
+        .order_by(SessionAccount.priority.asc(), SessionAccount.transfer_count.asc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_session_account(
+    db: AsyncSession,
+    session_id: int,
+    **kwargs
+) -> bool:
+    """更新 Session 账号"""
+    result = await db.execute(
+        update(SessionAccount).where(SessionAccount.id == session_id).values(**kwargs)
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def get_all_sessions(db: AsyncSession) -> List[SessionAccount]:
+    """获取所有 Session 账号"""
+    result = await db.execute(select(SessionAccount).order_by(SessionAccount.priority))
+    return result.scalars().all()
+
+
+# ==================== TransferTask CRUD ====================
+
+async def create_transfer_task(
+    db: AsyncSession,
+    task_name: str,
+    source_chat_id: int,
+    source_chat_username: Optional[str] = None,
+    filter_keywords: Optional[List[str]] = None,
+    filter_type: str = "all",
+    filter_date_from: Optional[datetime] = None,
+    filter_date_to: Optional[datetime] = None,
+    created_by: Optional[int] = None
+) -> TransferTask:
+    """创建搬运任务"""
+    task = TransferTask(
+        task_name=task_name,
+        source_chat_id=source_chat_id,
+        source_chat_username=source_chat_username,
+        filter_keywords=filter_keywords or [],
+        filter_type=filter_type,
+        filter_date_from=filter_date_from,
+        filter_date_to=filter_date_to,
+        created_by=created_by,
+        created_at=datetime.now()
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    return task
+
+
+async def get_transfer_task(db: AsyncSession, task_id: int) -> Optional[TransferTask]:
+    """获取搬运任务"""
+    result = await db.execute(
+        select(TransferTask)
+        .options(selectinload(TransferTask.logs))
+        .where(TransferTask.id == task_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_transfer_task(
+    db: AsyncSession,
+    task_id: int,
+    **kwargs
+) -> bool:
+    """更新搬运任务"""
+    result = await db.execute(
+        update(TransferTask).where(TransferTask.id == task_id).values(**kwargs)
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def get_transfer_tasks(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20,
+    status: Optional[TaskStatus] = None
+) -> tuple[List[TransferTask], int]:
+    """获取搬运任务列表"""
+    query = select(TransferTask)
+
+    if status:
+        query = query.where(TransferTask.status == status)
+
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # 分页
+    query = query.offset(skip).limit(limit).order_by(TransferTask.created_at.desc())
+    result = await db.execute(query)
+    tasks = result.scalars().all()
+
+    return tasks, total
+
+
+# ==================== TaskLog CRUD ====================
+
+async def create_task_log(
+    db: AsyncSession,
+    task_id: int,
+    log_type: str,
+    message: str
+) -> TaskLog:
+    """创建任务日志"""
+    log = TaskLog(
+        task_id=task_id,
+        log_type=log_type,
+        message=message,
+        created_at=datetime.now()
+    )
+    db.add(log)
+    await db.commit()
+    await db.refresh(log)
+    return log
+
+
+# ==================== Setting CRUD ====================
+
+async def get_setting(db: AsyncSession, key: str) -> Optional[str]:
+    """获取设置"""
+    result = await db.execute(select(Setting).where(Setting.key == key))
+    setting = result.scalar_one_or_none()
+    return setting.value if setting else None
+
+
+async def set_setting(db: AsyncSession, key: str, value: str, description: Optional[str] = None):
+    """设置配置"""
+    result = await db.execute(select(Setting).where(Setting.key == key))
+    setting = result.scalar_one_or_none()
+
+    if setting:
+        await db.execute(
+            update(Setting)
+            .where(Setting.key == key)
+            .values(value=value, updated_at=datetime.now())
+        )
+    else:
+        setting = Setting(key=key, value=value, description=description)
+        db.add(setting)
+
+    await db.commit()
+
+
+async def get_all_settings(db: AsyncSession) -> Dict[str, str]:
+    """获取所有设置"""
+    result = await db.execute(select(Setting))
+    settings = result.scalars().all()
+    return {s.key: s.value for s in settings}
+
+
+# ==================== AdminLog CRUD ====================
+
+async def create_admin_log(
+    db: AsyncSession,
+    user_id: int,
+    action: str,
+    details: Optional[Dict[str, Any]] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None
+) -> AdminLog:
+    """创建管理员操作日志"""
+    log = AdminLog(
+        user_id=user_id,
+        action=action,
+        details=details or {},
+        ip_address=ip_address,
+        user_agent=user_agent,
+        created_at=datetime.now()
+    )
+    db.add(log)
+    await db.commit()
+    await db.refresh(log)
+    return log
+
+
+async def get_admin_logs(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 50,
+    action: Optional[str] = None,
+    user_id: Optional[int] = None
+) -> tuple[List[AdminLog], int]:
+    """获取管理员日志"""
+    query = select(AdminLog)
+
+    if action:
+        query = query.where(AdminLog.action == action)
+    if user_id:
+        query = query.where(AdminLog.user_id == user_id)
+
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # 分页
+    query = query.offset(skip).limit(limit).order_by(AdminLog.created_at.desc())
+    result = await db.execute(query)
+    logs = result.scalars().all()
+
+    return logs, total

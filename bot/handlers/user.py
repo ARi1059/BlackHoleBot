@@ -1,0 +1,379 @@
+# bot/handlers/user.py
+"""
+用户端处理器
+"""
+
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery, InputMediaPhoto, InputMediaVideo
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import User, UserRole, AccessLevel
+from database.crud import (
+    get_collection_by_code,
+    get_media_by_collection,
+    get_media_count,
+    get_setting,
+    search_collections,
+)
+from bot.keyboards import (
+    create_pagination_keyboard,
+    create_search_results_keyboard,
+    create_collection_info_keyboard,
+)
+from utils import parse_start_parameter, calculate_total_pages
+from config import settings
+
+router = Router()
+
+
+def check_collection_access(user: User, collection) -> bool:
+    """
+    检查用户是否有权限访问合集
+
+    Args:
+        user: 用户对象
+        collection: 合集对象
+
+    Returns:
+        是否有权限
+    """
+    if collection.access_level == AccessLevel.PUBLIC:
+        return True
+
+    if collection.access_level == AccessLevel.VIP:
+        return user.role in [UserRole.VIP, UserRole.ADMIN, UserRole.SUPER_ADMIN]
+
+    return False
+
+
+@router.message(Command("start"))
+async def cmd_start(message: Message, user: User, db: AsyncSession):
+    """
+    处理 /start 命令
+
+    功能：
+    1. 无参数：显示欢迎消息
+    2. 有参数：访问深链接合集
+    """
+    # 解析深链接参数
+    deep_link_code = parse_start_parameter(message.text)
+
+    if not deep_link_code:
+        # 显示欢迎消息
+        welcome_message = await get_setting(db, "welcome_message")
+        if not welcome_message:
+            welcome_message = (
+                "👋 欢迎使用 BlackHoleBot！\n\n"
+                "🎯 功能介绍:\n"
+                "• 📦 浏览海量媒体合集\n"
+                "• 🔍 快速搜索感兴趣的内容\n"
+                "• 💎 VIP 用户专享高质量资源\n\n"
+                "📖 使用指南:\n"
+                "/search - 搜索合集\n"
+                "/help - 查看帮助\n\n"
+                "💡 提示: 点击频道分享的链接即可直接访问合集\n\n"
+                "祝你使用愉快！✨"
+            )
+
+        await message.answer(welcome_message)
+        return
+
+    # 访问深链接合集
+    await view_collection(message, user, db, deep_link_code, page=1)
+
+
+async def view_collection(
+    message: Message,
+    user: User,
+    db: AsyncSession,
+    deep_link_code: str,
+    page: int = 1
+):
+    """
+    查看合集内容
+
+    Args:
+        message: 消息对象
+        user: 用户对象
+        db: 数据库 session
+        deep_link_code: 深链接码
+        page: 页码
+    """
+    # 查询合集
+    collection = await get_collection_by_code(db, deep_link_code)
+
+    if not collection:
+        await message.answer(
+            "❌ 合集不存在或已被删除\n"
+            "🔍 使用 /search 搜索其他合集"
+        )
+        return
+
+    # 检查权限
+    if not check_collection_access(user, collection):
+        await message.answer(
+            "❌ 抱歉，这是 VIP 专属合集\n"
+            "💎 升级为 VIP 用户即可访问\n\n"
+            "联系管理员获取 VIP 权限"
+        )
+        return
+
+    # 获取媒体数量和总页数
+    media_count = await get_media_count(db, collection.id)
+    total_pages = calculate_total_pages(media_count, settings.MEDIA_PER_PAGE)
+
+    # 确保页码有效
+    page = max(1, min(page, total_pages))
+
+    # 获取当前页的媒体
+    offset = (page - 1) * settings.MEDIA_PER_PAGE
+    media_list = await get_media_by_collection(
+        db,
+        collection.id,
+        skip=offset,
+        limit=settings.MEDIA_PER_PAGE
+    )
+
+    if not media_list:
+        await message.answer("❌ 该合集暂无内容")
+        return
+
+    # 发送合集信息
+    tags_text = " ".join([f"#{tag}" for tag in (collection.tags or [])])
+    info_text = (
+        f"📦 合集名称: {collection.name}\n"
+        f"📝 描述: {collection.description or '无'}\n"
+        f"🏷️ 标签: {tags_text or '无'}\n"
+        f"📊 共 {media_count} 个媒体"
+    )
+
+    # 准备媒体组
+    media_group = []
+    for idx, media in enumerate(media_list):
+        caption = info_text if idx == 0 else None
+
+        if media.file_type == "photo":
+            media_group.append(InputMediaPhoto(
+                media=media.file_id,
+                caption=caption
+            ))
+        elif media.file_type == "video":
+            media_group.append(InputMediaVideo(
+                media=media.file_id,
+                caption=caption
+            ))
+
+    # 发送媒体组
+    try:
+        await message.answer_media_group(media_group)
+
+        # 发送分页按钮
+        keyboard = create_pagination_keyboard(
+            deep_link_code,
+            page,
+            total_pages
+        )
+        await message.answer(
+            f"📄 第 {page}/{total_pages} 页",
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        await message.answer(f"❌ 发送媒体失败: {str(e)}")
+
+
+@router.callback_query(F.data.startswith("collection_"))
+async def callback_collection_page(callback: CallbackQuery, user: User, db: AsyncSession):
+    """
+    处理合集分页回调
+
+    Callback data 格式:
+    - collection_{code}_page_{page}
+    - collection_{code}_info
+    """
+    data = callback.data
+
+    if data.startswith("collection_") and "_page_" in data:
+        # 解析参数
+        parts = data.split("_")
+        deep_link_code = parts[1]
+        page = int(parts[3])
+
+        # 删除旧消息
+        try:
+            await callback.message.delete()
+        except:
+            pass
+
+        # 显示新页面
+        await view_collection(callback.message, user, db, deep_link_code, page)
+        await callback.answer()
+
+    elif data.startswith("collection_") and "_info" in data:
+        # 显示合集信息
+        deep_link_code = data.split("_")[1]
+        collection = await get_collection_by_code(db, deep_link_code)
+
+        if not collection:
+            await callback.answer("❌ 合集不存在", show_alert=True)
+            return
+
+        tags_text = " ".join([f"#{tag}" for tag in (collection.tags or [])])
+        media_count = await get_media_count(db, collection.id)
+
+        info_text = (
+            f"📦 合集名称: {collection.name}\n"
+            f"📝 描述: {collection.description or '无'}\n"
+            f"🏷️ 标签: {tags_text or '无'}\n"
+            f"📊 媒体数量: {media_count}\n"
+            f"🔒 访问权限: {'💎 VIP' if collection.access_level == AccessLevel.VIP else '🌍 公开'}\n"
+            f"📅 创建时间: {collection.created_at.strftime('%Y-%m-%d')}"
+        )
+
+        keyboard = create_collection_info_keyboard(deep_link_code)
+        await callback.message.answer(info_text, reply_markup=keyboard)
+        await callback.answer()
+
+
+@router.callback_query(F.data == "page_info")
+async def callback_page_info(callback: CallbackQuery):
+    """处理页码信息按钮点击"""
+    await callback.answer("当前页码", show_alert=False)
+
+
+@router.callback_query(F.data == "search")
+async def callback_search(callback: CallbackQuery):
+    """处理搜索按钮点击"""
+    await callback.message.answer(
+        "🔍 请使用以下格式搜索合集:\n\n"
+        "/search 关键词\n\n"
+        "示例: /search 猫咪"
+    )
+    await callback.answer()
+
+
+@router.message(Command("search"))
+async def cmd_search(message: Message, user: User, db: AsyncSession):
+    """
+    处理 /search 命令
+
+    格式: /search 关键词
+    """
+    # 解析关键词
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "🔍 请输入搜索关键词\n\n"
+            "格式: /search 关键词\n"
+            "示例: /search 猫咪"
+        )
+        return
+
+    keyword = parts[1].strip()
+
+    # 搜索合集
+    collections = await search_collections(
+        db,
+        keyword=keyword,
+        user_role=user.role,
+        skip=0,
+        limit=10
+    )
+
+    if not collections:
+        await message.answer(
+            f"🔍 搜索结果: \"{keyword}\"\n\n"
+            "❌ 未找到相关合集\n\n"
+            "💡 提示:\n"
+            "- 尝试使用其他关键词\n"
+            "- 检查拼写是否正确\n"
+            "- 联系管理员添加新内容"
+        )
+        return
+
+    # 构建结果文本
+    result_text = f"🔍 搜索结果: \"{keyword}\"\n\n找到 {len(collections)} 个合集:\n\n"
+
+    for idx, collection in enumerate(collections, 1):
+        vip_mark = " 💎VIP" if collection.access_level == AccessLevel.VIP else ""
+        tags_text = " ".join([f"#{tag}" for tag in (collection.tags or [])])
+
+        result_text += (
+            f"{idx}️⃣ {collection.name}{vip_mark}\n"
+            f"   📝 {collection.description or '无描述'}\n"
+            f"   🏷️ {tags_text or '无标签'}\n"
+            f"   📊 {collection.media_count} 个媒体\n\n"
+        )
+
+    result_text += "💡 点击按钮查看合集内容"
+
+    # 创建按钮
+    keyboard = create_search_results_keyboard(collections)
+
+    await message.answer(result_text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("view_collection_"))
+async def callback_view_collection(callback: CallbackQuery, user: User, db: AsyncSession):
+    """
+    处理查看合集回调
+
+    Callback data 格式: view_collection_{deep_link_code}
+    """
+    deep_link_code = callback.data.replace("view_collection_", "")
+
+    # 删除搜索结果消息
+    try:
+        await callback.message.delete()
+    except:
+        pass
+
+    # 显示合集
+    await view_collection(callback.message, user, db, deep_link_code, page=1)
+    await callback.answer()
+
+
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    """处理 /help 命令"""
+    help_text = (
+        "📖 BlackHoleBot 使用帮助\n\n"
+        "🔹 基础命令:\n"
+        "/start - 启动 Bot\n"
+        "/search <关键词> - 搜索合集\n"
+        "/help - 查看帮助\n"
+        "/myinfo - 查看个人信息\n\n"
+        "🔹 使用方法:\n"
+        "1. 点击频道分享的链接直接访问合集\n"
+        "2. 使用 /search 命令搜索感兴趣的内容\n"
+        "3. 在合集中使用翻页按钮浏览所有媒体\n\n"
+        "🔹 权限说明:\n"
+        "• 普通用户: 可访问公开合集\n"
+        "• VIP 用户: 可访问所有合集\n\n"
+        "💡 如需升级 VIP，请联系管理员"
+    )
+
+    await message.answer(help_text)
+
+
+@router.message(Command("myinfo"))
+async def cmd_myinfo(message: Message, user: User):
+    """处理 /myinfo 命令"""
+    role_names = {
+        UserRole.USER: "👤 普通用户",
+        UserRole.VIP: "💎 VIP 用户",
+        UserRole.ADMIN: "👨‍💼 管理员",
+        UserRole.SUPER_ADMIN: "👑 超级管理员"
+    }
+
+    info_text = (
+        "👤 个人信息\n\n"
+        f"ID: {user.telegram_id}\n"
+        f"用户名: @{user.username or 'N/A'}\n"
+        f"姓名: {user.first_name}\n"
+        f"角色: {role_names.get(user.role, user.role)}\n"
+        f"注册时间: {user.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+        f"最后活跃: {user.last_active_at.strftime('%Y-%m-%d %H:%M')}"
+    )
+
+    await message.answer(info_text)

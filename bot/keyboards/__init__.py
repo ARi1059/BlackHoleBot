@@ -1,0 +1,16 @@
+# bot/keyboards/__init__.py
+"""
+键盘模块
+"""
+
+from .inline import (
+    create_pagination_keyboard,
+    create_search_results_keyboard,
+    create_collection_info_keyboard,
+)
+
+__all__ = [
+    "create_pagination_keyboard",
+    "create_search_results_keyboard",
+    "create_collection_info_keyboard",
+]
