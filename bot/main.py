@@ -13,7 +13,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
 
 from config import settings
 from bot.middlewares import AuthMiddleware
@@ -57,10 +56,7 @@ async def main():
     transfer_executor.set_redis_client(redis_client)
 
     # 创建 Bot 实例
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+    bot = Bot(token=settings.BOT_TOKEN, parse_mode=ParseMode.HTML)
 
     # 创建 Dispatcher
     dp = Dispatcher()
@@ -89,7 +85,7 @@ async def main():
         logger.error(f"Error during polling: {e}")
     finally:
         await bot.session.close()
-        await redis_client.close()
+        await redis_client.aclose()
         logger.info("Bot stopped")
 
 
