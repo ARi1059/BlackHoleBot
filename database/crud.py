@@ -149,7 +149,7 @@ async def create_collection(
         description=description,
         tags=tags or [],
         deep_link_code=deep_link_code,
-        access_level=access_level.value,  # 使用枚举的 value 而不是枚举对象
+        access_level=access_level,
         created_by=created_by,
         created_at=datetime.now(),
         updated_at=datetime.now()
