@@ -623,32 +623,50 @@ function loadSessions() {
                     <span class="close" onclick="closeAddSessionModal()" style="cursor: pointer; font-size: 24px;">&times;</span>
                 </div>
                 <div class="modal-body">
-                    <form id="addSessionForm">
-                        <div class="form-group" style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px;">手机号（带国家码）</label>
-                            <input type="text" id="sessionPhone" required placeholder="+8613800138000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px;">API ID</label>
-                            <input type="number" id="sessionApiId" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px;">API Hash</label>
-                            <input type="text" id="sessionApiHash" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px;">验证码（可选）</label>
-                            <input type="text" id="sessionCode" placeholder="收到验证码后填写" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px;">两步验证密码（可选）</label>
-                            <input type="password" id="sessionPassword" placeholder="如有两步验证则填写" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                        </div>
-                        <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
-                            <button type="button" class="btn btn-secondary" onclick="closeAddSessionModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
-                            <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">登录</button>
-                        </div>
-                    </form>
+                    <div id="sessionLoginStep1">
+                        <form id="addSessionForm">
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px;">手机号（带国家码）</label>
+                                <input type="text" id="sessionPhone" required placeholder="+8613800138000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px;">API ID</label>
+                                <input type="number" id="sessionApiId" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px;">API Hash</label>
+                                <input type="text" id="sessionApiHash" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" class="btn btn-secondary" onclick="closeAddSessionModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                                <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">发送验证码</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div id="sessionLoginStep2" style="display: none;">
+                        <form id="addSessionCodeForm">
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px;">验证码</label>
+                                <input type="text" id="sessionCode" required placeholder="请输入收到的验证码" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" class="btn btn-secondary" onclick="closeAddSessionModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                                <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">登录</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div id="sessionLoginStep3" style="display: none;">
+                        <form id="addSessionPasswordForm">
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px;">两步验证密码</label>
+                                <input type="password" id="sessionPassword" required placeholder="请输入两步验证密码" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" class="btn btn-secondary" onclick="closeAddSessionModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                                <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">登录</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -693,6 +711,8 @@ function loadSessions() {
 
 // ==================== Session 管理 ====================
 
+let sessionLoginData = {}; // 保存登录过程中的数据
+
 // 设置 Session 事件监听
 function setupSessionsEventListeners() {
     // 添加账号按钮
@@ -701,10 +721,22 @@ function setupSessionsEventListeners() {
         addSessionBtn.addEventListener('click', openAddSessionModal);
     }
 
-    // 添加 Session 表单提交
+    // 第一步：发送验证码
     const addSessionForm = document.getElementById('addSessionForm');
     if (addSessionForm) {
-        addSessionForm.addEventListener('submit', handleAddSessionSubmit);
+        addSessionForm.addEventListener('submit', handleSendCodeSubmit);
+    }
+
+    // 第二步：输入验证码
+    const addSessionCodeForm = document.getElementById('addSessionCodeForm');
+    if (addSessionCodeForm) {
+        addSessionCodeForm.addEventListener('submit', handleCodeSubmit);
+    }
+
+    // 第三步：输入两步验证密码
+    const addSessionPasswordForm = document.getElementById('addSessionPasswordForm');
+    if (addSessionPasswordForm) {
+        addSessionPasswordForm.addEventListener('submit', handlePasswordSubmit);
     }
 
     // 编辑 Session 表单提交
@@ -765,23 +797,34 @@ function renderSessionsTable(sessions) {
 // 打开添加 Session 模态框
 function openAddSessionModal() {
     document.getElementById('addSessionModal').style.display = 'block';
+    // 重置到第一步
+    document.getElementById('sessionLoginStep1').style.display = 'block';
+    document.getElementById('sessionLoginStep2').style.display = 'none';
+    document.getElementById('sessionLoginStep3').style.display = 'none';
     document.getElementById('addSessionForm').reset();
+    sessionLoginData = {};
 }
 
 // 关闭添加 Session 模态框
 function closeAddSessionModal() {
     document.getElementById('addSessionModal').style.display = 'none';
+    sessionLoginData = {};
 }
 
-// 处理添加 Session 表单提交
-async function handleAddSessionSubmit(e) {
+// 第一步：发送验证码
+async function handleSendCodeSubmit(e) {
     e.preventDefault();
 
     const phone_number = document.getElementById('sessionPhone').value;
     const api_id = parseInt(document.getElementById('sessionApiId').value);
     const api_hash = document.getElementById('sessionApiHash').value;
-    const code = document.getElementById('sessionCode').value || null;
-    const password = document.getElementById('sessionPassword').value || null;
+
+    // 保存数据供后续步骤使用
+    sessionLoginData = {
+        phone_number,
+        api_id,
+        api_hash
+    };
 
     try {
         const data = await apiRequest('/api/sessions/login', {
@@ -790,23 +833,92 @@ async function handleAddSessionSubmit(e) {
                 phone_number,
                 api_id,
                 api_hash,
-                code,
-                password
+                code: null,
+                password: null
             })
         });
 
-        if (data.success) {
+        if (data.success && data.message && data.message.includes('验证码')) {
+            // 验证码已发送，显示第二步
+            document.getElementById('sessionLoginStep1').style.display = 'none';
+            document.getElementById('sessionLoginStep2').style.display = 'block';
+            alert(data.message || '验证码已发送，请查收');
+        } else {
+            alert(data.message || '发送验证码失败');
+        }
+    } catch (error) {
+        console.error('发送验证码失败:', error);
+        alert('发送验证码失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 第二步：输入验证码
+async function handleCodeSubmit(e) {
+    e.preventDefault();
+
+    const code = document.getElementById('sessionCode').value;
+
+    try {
+        const data = await apiRequest('/api/sessions/login', {
+            method: 'POST',
+            body: JSON.stringify({
+                phone_number: sessionLoginData.phone_number,
+                api_id: sessionLoginData.api_id,
+                api_hash: sessionLoginData.api_hash,
+                code: code,
+                password: null
+            })
+        });
+
+        if (data.success && !data.password_required) {
+            // 登录成功
             closeAddSessionModal();
             loadSessionsData();
             alert(data.message || '登录成功');
         } else if (data.password_required) {
+            // 需要两步验证密码，显示第三步
+            document.getElementById('sessionLoginStep2').style.display = 'none';
+            document.getElementById('sessionLoginStep3').style.display = 'block';
             alert(data.message || '需要输入两步验证密码');
         } else {
-            alert(data.message || '登录失败');
+            alert(data.message || '验证码错误');
         }
     } catch (error) {
-        console.error('添加 Session 失败:', error);
-        alert('添加失败: ' + (error.message || '未知错误'));
+        console.error('验证码登录失败:', error);
+        alert('验证码登录失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 第三步：输入两步验证密码
+async function handlePasswordSubmit(e) {
+    e.preventDefault();
+
+    const password = document.getElementById('sessionPassword').value;
+    const code = document.getElementById('sessionCode').value;
+
+    try {
+        const data = await apiRequest('/api/sessions/login', {
+            method: 'POST',
+            body: JSON.stringify({
+                phone_number: sessionLoginData.phone_number,
+                api_id: sessionLoginData.api_id,
+                api_hash: sessionLoginData.api_hash,
+                code: code,
+                password: password
+            })
+        });
+
+        if (data.success) {
+            // 登录成功
+            closeAddSessionModal();
+            loadSessionsData();
+            alert(data.message || '登录成功');
+        } else {
+            alert(data.message || '密码错误');
+        }
+    } catch (error) {
+        console.error('两步验证失败:', error);
+        alert('两步验证失败: ' + (error.message || '未知错误'));
     }
 }
 
