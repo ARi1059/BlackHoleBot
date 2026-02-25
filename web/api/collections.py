@@ -112,7 +112,7 @@ async def update_collection_info(
         update_data["tags"] = data.tags
     if data.access_level is not None:
         try:
-            update_data["access_level"] = AccessLevel(data.access_level)
+            update_data["access_level"] = AccessLevel(data.access_level).value
         except ValueError:
             raise HTTPException(status_code=400, detail="无效的访问权限")
 

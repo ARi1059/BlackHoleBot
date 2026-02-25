@@ -73,6 +73,12 @@ async def dashboard_page():
     return FileResponse("web/templates/dashboard.html")
 
 
+@app.get("/collections")
+async def collections_page():
+    """合集管理页面"""
+    return FileResponse("web/templates/collections.html")
+
+
 @app.get("/health")
 async def health_check():
     """健康检查"""

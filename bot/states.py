@@ -15,22 +15,6 @@ class UploadStates(StatesGroup):
     waiting_for_permission = State()  # 等待选择权限
 
 
-class AddMediaStates(StatesGroup):
-    """添加媒体到现有合集状态"""
-    waiting_for_media = State()       # 等待上传媒体
-
-
-class EditCollectionStates(StatesGroup):
-    """编辑合集状态"""
-    waiting_for_field = State()       # 等待选择要编辑的字段
-    waiting_for_value = State()       # 等待输入新值
-
-
-class BatchDeleteStates(StatesGroup):
-    """批量删除状态"""
-    waiting_for_codes = State()       # 等待输入深链接码
-
-
 class TransferTaskStates(StatesGroup):
     """搬运任务状态"""
     waiting_for_chat_id = State()     # 等待输入频道 ID
