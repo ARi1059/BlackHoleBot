@@ -5,7 +5,7 @@
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 
 from database.connection import get_db
 from database.models import User, Collection, Media, TransferTask, AccessLevel, TaskStatus, UserRole
@@ -28,9 +28,9 @@ async def get_dashboard_stats(
     # 总用户数
     total_users = await db.scalar(select(func.count(User.id)))
 
-    # VIP 用户数 - 使用字符串比较避免枚举类型问题
+    # VIP 用户数 - 使用原始 SQL 避免枚举类型问题
     total_vip_users = await db.scalar(
-        select(func.count(User.id)).where(User.role == 'VIP')
+        text("SELECT COUNT(id) FROM users WHERE role = 'VIP'")
     )
 
     # 总合集数
@@ -41,24 +41,22 @@ async def get_dashboard_stats(
 
     # 公开合集数
     public_collections = await db.scalar(
-        select(func.count(Collection.id)).where(Collection.access_level == 'PUBLIC')
+        text("SELECT COUNT(id) FROM collections WHERE access_level = 'PUBLIC'")
     )
 
     # VIP 合集数
     vip_collections = await db.scalar(
-        select(func.count(Collection.id)).where(Collection.access_level == 'VIP')
+        text("SELECT COUNT(id) FROM collections WHERE access_level = 'VIP'")
     )
 
     # 活跃任务数
     active_tasks = await db.scalar(
-        select(func.count(TransferTask.id)).where(
-            TransferTask.status.in_(['RUNNING', 'PENDING'])
-        )
+        text("SELECT COUNT(id) FROM transfer_tasks WHERE status IN ('RUNNING', 'PENDING')")
     )
 
     # 已完成任务数
     completed_tasks = await db.scalar(
-        select(func.count(TransferTask.id)).where(TransferTask.status == 'COMPLETED')
+        text("SELECT COUNT(id) FROM transfer_tasks WHERE status = 'COMPLETED'")
     )
 
     return DashboardStats(
