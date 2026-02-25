@@ -48,7 +48,7 @@ class User(Base):
     username = Column(String(255))
     first_name = Column(String(255))
     last_name = Column(String(255))
-    role = Column(SQLEnum(UserRole, values_callable=lambda x: [e.value for e in x]), default=UserRole.USER, nullable=False, index=True)
+    role = Column(SQLEnum(UserRole, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=UserRole.USER, nullable=False, index=True)
     is_banned = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     last_active_at = Column(DateTime, default=datetime.now, nullable=False)
@@ -67,7 +67,7 @@ class Collection(Base):
     description = Column(Text)
     tags = Column(ARRAY(String))  # 存储标签数组
     deep_link_code = Column(String(32), unique=True, nullable=False, index=True)
-    access_level = Column(SQLEnum(AccessLevel, values_callable=lambda x: [e.value for e in x]), default=AccessLevel.PUBLIC, nullable=False, index=True)
+    access_level = Column(SQLEnum(AccessLevel, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=AccessLevel.PUBLIC, nullable=False, index=True)
     media_count = Column(Integer, default=0, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime, default=datetime.now, nullable=False)
@@ -148,7 +148,7 @@ class TransferTask(Base):
     filter_date_from = Column(DateTime)
     filter_date_to = Column(DateTime)
     session_account_id = Column(Integer, ForeignKey("session_accounts.id", ondelete="SET NULL"))
-    status = Column(SQLEnum(TaskStatus, values_callable=lambda x: [e.value for e in x]), default=TaskStatus.PENDING, nullable=False, index=True)
+    status = Column(SQLEnum(TaskStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=TaskStatus.PENDING, nullable=False, index=True)
     progress_current = Column(Integer, default=0, nullable=False)
     progress_total = Column(Integer, default=0, nullable=False)
     temp_redis_key = Column(String(255))  # Redis 临时存储 key
