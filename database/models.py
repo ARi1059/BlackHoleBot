@@ -143,7 +143,7 @@ class TransferTask(Base):
     task_name = Column(String(255), nullable=False)
     source_chat_id = Column(BigInteger, nullable=False)
     source_chat_username = Column(String(255))
-    filter_keywords = Column(JSON)  # 过滤关键词数组
+    filter_keywords = Column(ARRAY(String))  # 过滤关键词数组
     filter_type = Column(String(20), default="all")  # photo, video, all
     filter_date_from = Column(DateTime)
     filter_date_to = Column(DateTime)
