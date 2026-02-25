@@ -283,7 +283,9 @@ async def handle_access_permission(callback: CallbackQuery, user: User, db: Asyn
         await callback.answer("✅ 合集创建成功")
 
     except Exception as e:
-        await callback.message.answer(f"❌ 创建失败: {str(e)}")
+        # 转义 HTML 字符避免 Telegram 解析错误
+        error_msg = str(e).replace('<', '&lt;').replace('>', '&gt;')
+        await callback.message.answer(f"❌ 创建失败: {error_msg}")
         await callback.answer("❌ 创建失败", show_alert=True)
 
 

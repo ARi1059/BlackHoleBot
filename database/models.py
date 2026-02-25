@@ -6,7 +6,7 @@ SQLAlchemy 数据库模型
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, BigInteger, Boolean, Text, DateTime,
-    ForeignKey, JSON, Index, Enum as SQLEnum
+    ForeignKey, JSON, Index, Enum as SQLEnum, ARRAY
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -65,7 +65,7 @@ class Collection(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    tags = Column(JSON)  # 存储标签数组
+    tags = Column(ARRAY(String))  # 存储标签数组
     deep_link_code = Column(String(32), unique=True, nullable=False, index=True)
     access_level = Column(SQLEnum(AccessLevel), default=AccessLevel.PUBLIC, nullable=False, index=True)
     media_count = Column(Integer, default=0, nullable=False)
