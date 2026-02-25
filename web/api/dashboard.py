@@ -28,9 +28,9 @@ async def get_dashboard_stats(
     # 总用户数
     total_users = await db.scalar(select(func.count(User.id)))
 
-    # VIP 用户数
+    # VIP 用户数 - 使用字符串比较避免枚举类型问题
     total_vip_users = await db.scalar(
-        select(func.count(User.id)).where(User.role == UserRole.VIP)
+        select(func.count(User.id)).where(User.role == 'VIP')
     )
 
     # 总合集数
@@ -41,24 +41,24 @@ async def get_dashboard_stats(
 
     # 公开合集数
     public_collections = await db.scalar(
-        select(func.count(Collection.id)).where(Collection.access_level == AccessLevel.PUBLIC)
+        select(func.count(Collection.id)).where(Collection.access_level == 'PUBLIC')
     )
 
     # VIP 合集数
     vip_collections = await db.scalar(
-        select(func.count(Collection.id)).where(Collection.access_level == AccessLevel.VIP)
+        select(func.count(Collection.id)).where(Collection.access_level == 'VIP')
     )
 
     # 活跃任务数
     active_tasks = await db.scalar(
         select(func.count(TransferTask.id)).where(
-            TransferTask.status.in_([TaskStatus.RUNNING, TaskStatus.PENDING])
+            TransferTask.status.in_(['RUNNING', 'PENDING'])
         )
     )
 
     # 已完成任务数
     completed_tasks = await db.scalar(
-        select(func.count(TransferTask.id)).where(TransferTask.status == TaskStatus.COMPLETED)
+        select(func.count(TransferTask.id)).where(TransferTask.status == 'COMPLETED')
     )
 
     return DashboardStats(
