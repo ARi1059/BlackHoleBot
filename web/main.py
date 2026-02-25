@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import uvicorn
 
 from config import settings
@@ -24,6 +25,9 @@ app = FastAPI(
     description="BlackHoleBot 管理后台 API",
     version="1.0.0"
 )
+
+# 挂载静态文件
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 # CORS 配置
 app.add_middleware(
@@ -55,6 +59,18 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs"
     }
+
+
+@app.get("/login")
+async def login_page():
+    """登录页面"""
+    return FileResponse("web/templates/login.html")
+
+
+@app.get("/dashboard")
+async def dashboard_page():
+    """仪表盘页面"""
+    return FileResponse("web/templates/dashboard.html")
 
 
 @app.get("/health")

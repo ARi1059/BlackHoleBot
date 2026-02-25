@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlackHoleBot 管理后台</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>BlackHoleBot</h1>
+                <p class="user-info" id="userInfo">加载中...</p>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#dashboard" class="nav-item active" data-page="dashboard">
+                    📊 仪表盘
+                </a>
+                <a href="#collections" class="nav-item" data-page="collections">
+                    📁 合集管理
+                </a>
+                <a href="#tasks" class="nav-item" data-page="tasks">
+                    🔄 搬运任务
+                </a>
+                <a href="#sessions" class="nav-item" data-page="sessions">
+                    🔑 Session 管理
+                </a>
+                <a href="#users" class="nav-item" data-page="users">
+                    👥 用户管理
+                </a>
+                <a href="#settings" class="nav-item" data-page="settings">
+                    ⚙️ 系统设置
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="logoutBtn">退出登录</button>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div id="pageContent">
+                <!-- 动态加载内容 -->
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

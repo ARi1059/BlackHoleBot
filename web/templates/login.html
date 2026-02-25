@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - BlackHoleBot 管理后台</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>BlackHoleBot</h1>
+            <h2>管理后台登录</h2>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="telegram_id">Telegram ID</label>
+                    <input type="text" id="telegram_id" name="telegram_id" required placeholder="请输入您的 Telegram ID">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">验证码</label>
+                    <input type="password" id="password" name="password" required placeholder="请输入验证码">
+                </div>
+
+                <button type="submit" class="btn-primary">登录</button>
+            </form>
+
+            <div class="login-tips">
+                <p>💡 提示：请使用您的 Telegram ID 登录</p>
+                <p>如需获取验证码，请在 Bot 中发送 /login 命令</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/login.js"></script>
+</body>
+</html>
