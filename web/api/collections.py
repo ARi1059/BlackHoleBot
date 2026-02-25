@@ -211,7 +211,7 @@ async def trigger_add_media(
     """
     from aiogram import Bot
     from aiogram.fsm.context import FSMContext
-    from aiogram.fsm.storage.redis import RedisStorage
+    from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
     from config import settings
     import redis.asyncio as redis
 
@@ -225,19 +225,20 @@ async def trigger_add_media(
         bot = Bot(token=settings.BOT_TOKEN)
 
         # 创建 Redis 存储
-        redis_client = redis.from_url(settings.REDIS_URL)
-        storage = RedisStorage(redis_client)
+        redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        storage = RedisStorage(redis_client, key_builder=DefaultKeyBuilder(with_destiny=True))
 
         # 获取 FSM 上下文
         from bot.states import AddMediaStates
-        state = FSMContext(
-            storage=storage,
-            key=storage.key(
-                bot_id=bot.id,
-                chat_id=current_user.telegram_id,
-                user_id=current_user.telegram_id
-            )
+        from aiogram.fsm.storage.base import StorageKey
+
+        key = StorageKey(
+            bot_id=bot.id,
+            chat_id=current_user.telegram_id,
+            user_id=current_user.telegram_id
         )
+
+        state = FSMContext(storage=storage, key=key)
 
         # 设置状态和数据
         await state.set_state(AddMediaStates.waiting_for_media)
