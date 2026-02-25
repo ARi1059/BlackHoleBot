@@ -58,6 +58,8 @@ class AuthMiddleware(BaseMiddleware):
             else:
                 # 更新最后活跃时间
                 await update_user_last_active(db, user.id)
+                # 刷新用户对象以获取最新数据
+                await db.refresh(user)
 
             # 检查封禁状态
             if user.is_banned:
