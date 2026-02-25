@@ -205,10 +205,15 @@ async def trigger_add_media(
     """
     触发 Bot 向指定合集添加媒体
 
+    直接将用户状态设置为添加媒体状态，无需手动输入命令
+
     需要管理员权限
     """
     from aiogram import Bot
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.redis import RedisStorage
     from config import settings
+    import redis.asyncio as redis
 
     # 检查合集是否存在
     collection = await get_collection(db, collection_id)
@@ -216,21 +221,49 @@ async def trigger_add_media(
         raise HTTPException(status_code=404, detail="合集不存在")
 
     try:
-        # 创建临时 Bot 实例发送消息
+        # 创建临时 Bot 实例
         bot = Bot(token=settings.BOT_TOKEN)
 
-        # 向管理员发送消息，触发添加媒体流程
-        await bot.send_message(
-            current_user.telegram_id,
-            f"📤 Web 端触发添加媒体\n\n"
-            f"请使用以下命令开始添加:\n"
-            f"/add_media {collection_id}\n\n"
-            f"合集: {collection.name}\n"
-            f"当前媒体数: {collection.media_count}"
+        # 创建 Redis 存储
+        redis_client = redis.from_url(settings.REDIS_URL)
+        storage = RedisStorage(redis_client)
+
+        # 获取 FSM 上下文
+        from bot.states import AddMediaStates
+        state = FSMContext(
+            storage=storage,
+            key=storage.key(
+                bot_id=bot.id,
+                chat_id=current_user.telegram_id,
+                user_id=current_user.telegram_id
+            )
         )
 
-        # 关闭 bot session
+        # 设置状态和数据
+        await state.set_state(AddMediaStates.waiting_for_media)
+        await state.update_data(
+            collection_id=collection_id,
+            collection_name=collection.name,
+            media_list=[],
+            current_media_count=collection.media_count
+        )
+
+        # 向管理员发送通知
+        await bot.send_message(
+            current_user.telegram_id,
+            f"📤 开始向合集添加媒体\n\n"
+            f"📦 合集: {collection.name}\n"
+            f"📊 当前媒体数: {collection.media_count}\n\n"
+            f"请直接发送媒体文件（图片或视频）\n"
+            f"• 可以一次发送多个文件\n"
+            f"• 支持媒体组（最多10个）\n"
+            f"• 完成后发送 /done\n\n"
+            f"💡 提示: 发送 /cancel 可随时取消"
+        )
+
+        # 关闭连接
         await bot.session.close()
+        await redis_client.aclose()
 
         # 记录日志
         await create_admin_log(
@@ -243,8 +276,8 @@ async def trigger_add_media(
             }
         )
 
-        return SuccessResponse(message="已通知 Bot，请在 Telegram 中继续操作")
+        return SuccessResponse(message="已进入添加媒体模式，请在 Telegram 中发送媒体文件")
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"发送消息失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"操作失败: {str(e)}")
 
