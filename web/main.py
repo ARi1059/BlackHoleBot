@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 import uvicorn
 
 from config import settings
@@ -53,12 +53,8 @@ app.add_websocket_route("/ws", websocket_endpoint)
 
 @app.get("/")
 async def root():
-    """根路径"""
-    return {
-        "message": "BlackHoleBot API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+    """根路径 - 重定向到登录页面"""
+    return RedirectResponse(url="/login")
 
 
 @app.get("/login")
