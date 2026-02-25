@@ -302,7 +302,8 @@ class TransferExecutor:
 
         # 关键词过滤
         if task.filter_keywords:
-            text = message.text or message.caption or ""
+            # 安全获取文本内容，使用 getattr 避免 AttributeError
+            text = getattr(message, 'text', None) or getattr(message, 'caption', None) or ""
             if not any(keyword in text for keyword in task.filter_keywords):
                 return False
 
