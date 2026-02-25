@@ -3,6 +3,7 @@
 管理员处理器
 """
 
+import asyncio
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -69,6 +70,7 @@ async def handle_media_upload(message: Message, state: FSMContext):
     """接收媒体文件"""
     data = await state.get_data()
     media_list = data.get("media_list", [])
+    media_group_tasks = data.get("media_group_tasks", {})  # 存储媒体组的通知任务
 
     # 提取文件信息
     if message.photo:
@@ -99,11 +101,33 @@ async def handle_media_upload(message: Message, state: FSMContext):
         "caption": message.caption
     })
 
-    await state.update_data(media_list=media_list)
+    # 处理媒体组通知
+    media_group_id = message.media_group_id
+    if media_group_id:
+        # 如果是媒体组的一部分，取消之前的通知任务
+        if media_group_id in media_group_tasks:
+            media_group_tasks[media_group_id].cancel()
 
-    # 每 10 个文件提示一次
-    if len(media_list) % 10 == 0:
+        # 创建新的延迟通知任务（1秒后执行）
+        async def delayed_notification():
+            await asyncio.sleep(1)
+            # 获取最新的媒体列表数量
+            current_data = await state.get_data()
+            current_count = len(current_data.get("media_list", []))
+            await message.answer(f"✅ 已接收 {current_count} 个文件")
+            # 清理任务记录
+            tasks = current_data.get("media_group_tasks", {})
+            if media_group_id in tasks:
+                del tasks[media_group_id]
+                await state.update_data(media_group_tasks=tasks)
+
+        task = asyncio.create_task(delayed_notification())
+        media_group_tasks[media_group_id] = task
+    else:
+        # 单个文件，直接通知
         await message.answer(f"✅ 已接收 {len(media_list)} 个文件")
+
+    await state.update_data(media_list=media_list, media_group_tasks=media_group_tasks)
 
 
 @router.message(UploadStates.waiting_for_media, Command("done"))
