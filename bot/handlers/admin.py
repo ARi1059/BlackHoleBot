@@ -354,8 +354,13 @@ async def cmd_add_media(message: Message, user: User, state: FSMContext, db: Asy
 @router.message(AddMediaStates.waiting_for_media, F.photo | F.video)
 async def handle_add_media_upload(message: Message, state: FSMContext):
     """接收要添加的媒体文件"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     data = await state.get_data()
     media_list = data.get("media_list", [])
+
+    logger.info(f"Receiving media in AddMediaStates, current list size: {len(media_list)}")
 
     # 提取文件信息
     if message.photo:
@@ -373,6 +378,7 @@ async def handle_add_media_upload(message: Message, state: FSMContext):
 
     # 检查是否重复
     if any(m["file_unique_id"] == file_unique_id for m in media_list):
+        logger.info(f"Duplicate media detected: {file_unique_id}")
         return
 
     # 添加到列表
@@ -385,20 +391,27 @@ async def handle_add_media_upload(message: Message, state: FSMContext):
     })
 
     await state.update_data(media_list=media_list)
+    logger.info(f"Media added, new list size: {len(media_list)}")
 
 
 @router.message(AddMediaStates.waiting_for_media, Command("done"))
 async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db: AsyncSession):
     """完成添加媒体"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     data = await state.get_data()
     media_list = data.get("media_list", [])
     collection_id = data.get("collection_id")
     collection_name = data.get("collection_name")
     current_media_count = data.get("current_media_count", 0)
 
+    logger.info(f"Done command received. Media list size: {len(media_list)}, collection_id: {collection_id}")
+
     # 验证
     if not media_list:
         await message.answer("❌ 还没有上传任何媒体文件")
+        logger.warning("No media in list when done command received")
         return
 
     # 检查总数是否超限
@@ -445,6 +458,8 @@ async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db
         # 清除状态
         await state.clear()
 
+        logger.info(f"Successfully added {len(media_list)} media to collection {collection_id}")
+
         await message.answer(
             f"✅ 添加成功！\n\n"
             f"📦 合集: {collection_name}\n"
@@ -453,6 +468,7 @@ async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db
         )
 
     except Exception as e:
+        logger.error(f"Error adding media: {e}", exc_info=True)
         error_msg = str(e).replace('<', '&lt;').replace('>', '&gt;')
         await message.answer(f"❌ 添加失败: {error_msg}")
 
