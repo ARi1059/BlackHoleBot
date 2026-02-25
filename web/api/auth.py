@@ -96,8 +96,8 @@ async def login_with_code(
     if not stored_code:
         raise HTTPException(status_code=401, detail="验证码不存在或已过期，请在 Bot 中发送 /login 获取新验证码")
 
-    # 验证验证码
-    if stored_code.decode() != login_data.password:
+    # 验证验证码（Redis 已配置 decode_responses=True，返回的是字符串）
+    if stored_code != login_data.password:
         raise HTTPException(status_code=401, detail="验证码错误")
 
     # 验证通过，删除验证码
