@@ -76,4 +76,4 @@ class AuthMiddleware(BaseMiddleware):
             data["user"] = user
             data["db"] = db
 
-        return await handler(event, data)
+            return await handler(event, data)
