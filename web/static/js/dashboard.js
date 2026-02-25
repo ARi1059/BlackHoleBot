@@ -532,6 +532,27 @@ function loadTasks() {
                             <label style="display: block; margin-bottom: 5px;">关键词过滤（用逗号分隔，可选）</label>
                             <input type="text" id="filterKeywords" placeholder="关键词1, 关键词2" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                         </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="transferAllHistory" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                <span>搬运全部历史消息</span>
+                            </label>
+                            <small style="color: #666; display: block; margin-top: 5px;">勾选后将搬运频道的所有历史消息，不勾选则只搬运指定时间范围内的消息</small>
+                        </div>
+                        <div id="dateRangeGroup" class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">时间范围（可选）</label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <div style="flex: 1;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">开始时间</label>
+                                    <input type="datetime-local" id="filterDateFrom" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">结束时间</label>
+                                    <input type="datetime-local" id="filterDateTo" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                </div>
+                            </div>
+                            <small style="color: #666; display: block; margin-top: 5px;">不填写则搬运所有消息</small>
+                        </div>
                         <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
                             <button type="button" class="btn btn-secondary" onclick="closeCreateTaskModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
                             <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">创建</button>
@@ -1001,6 +1022,23 @@ function setupTasksEventListeners() {
         createTaskBtn.addEventListener('click', openCreateTaskModal);
     }
 
+    // 全频道搬运复选框
+    const transferAllHistory = document.getElementById('transferAllHistory');
+    if (transferAllHistory) {
+        transferAllHistory.addEventListener('change', (e) => {
+            const dateRangeGroup = document.getElementById('dateRangeGroup');
+            if (e.target.checked) {
+                // 勾选时禁用时间选择
+                dateRangeGroup.style.display = 'none';
+                document.getElementById('filterDateFrom').value = '';
+                document.getElementById('filterDateTo').value = '';
+            } else {
+                // 不勾选时显示时间选择
+                dateRangeGroup.style.display = 'block';
+            }
+        });
+    }
+
     // 创建任务表单提交
     const createTaskForm = document.getElementById('createTaskForm');
     if (createTaskForm) {
@@ -1135,6 +1173,9 @@ async function handleCreateTaskSubmit(e) {
     const sourceChatInput = document.getElementById('sourceChatId').value.trim();
     const filterType = document.getElementById('filterType').value;
     const filterKeywordsInput = document.getElementById('filterKeywords').value;
+    const transferAllHistory = document.getElementById('transferAllHistory').checked;
+    const filterDateFrom = document.getElementById('filterDateFrom').value;
+    const filterDateTo = document.getElementById('filterDateTo').value;
 
     // 解析频道 ID
     let sourceChatId = 0;
@@ -1156,16 +1197,29 @@ async function handleCreateTaskSubmit(e) {
         ? filterKeywordsInput.split(',').map(k => k.trim()).filter(k => k)
         : [];
 
+    // 构建请求数据
+    const requestData = {
+        task_name: taskName,
+        source_chat_id: sourceChatId,
+        source_chat_username: sourceChatUsername,
+        filter_type: filterType,
+        filter_keywords: filterKeywords
+    };
+
+    // 如果不是全频道搬运，且有时间范围，则添加时间过滤
+    if (!transferAllHistory) {
+        if (filterDateFrom) {
+            requestData.filter_date_from = new Date(filterDateFrom).toISOString();
+        }
+        if (filterDateTo) {
+            requestData.filter_date_to = new Date(filterDateTo).toISOString();
+        }
+    }
+
     try {
         await apiRequest('/api/tasks', {
             method: 'POST',
-            body: JSON.stringify({
-                task_name: taskName,
-                source_chat_id: sourceChatId,
-                source_chat_username: sourceChatUsername,
-                filter_type: filterType,
-                filter_keywords: filterKeywords
-            })
+            body: JSON.stringify(requestData)
         });
 
         closeCreateTaskModal();
