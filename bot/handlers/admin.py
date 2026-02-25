@@ -101,8 +101,9 @@ async def handle_media_upload(message: Message, state: FSMContext):
 
     await state.update_data(media_list=media_list)
 
-    # 提示
-    await message.answer(f"✅ 已接收 {len(media_list)} 个文件")
+    # 每 10 个文件提示一次
+    if len(media_list) % 10 == 0:
+        await message.answer(f"✅ 已接收 {len(media_list)} 个文件")
 
 
 @router.message(UploadStates.waiting_for_media, Command("done"))
