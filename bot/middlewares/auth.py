@@ -45,6 +45,10 @@ class AuthMiddleware(BaseMiddleware):
             # 查询或创建用户
             user = await get_user_by_telegram_id(db, user_obj.id)
 
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[中间件] 查询到用户: telegram_id={user_obj.id}, user={user}, role={user.role if user else 'None'}")
+
             if not user:
                 # 自动注册新用户
                 user = await create_user(
@@ -60,6 +64,7 @@ class AuthMiddleware(BaseMiddleware):
                 await update_user_last_active(db, user.id)
                 # 刷新用户对象以获取最新数据
                 await db.refresh(user)
+                logger.info(f"[中间件] 刷新后用户角色: {user.role}")
 
             # 检查封禁状态
             if user.is_banned:
