@@ -207,20 +207,20 @@ async def trigger_add_media(
 
     需要管理员权限
     """
-    from bot import bot_instance
+    from aiogram import Bot
+    from config import settings
 
     # 检查合集是否存在
     collection = await get_collection(db, collection_id)
     if not collection:
         raise HTTPException(status_code=404, detail="合集不存在")
 
-    # 检查 bot 实例是否存在
-    if not bot_instance:
-        raise HTTPException(status_code=503, detail="Bot 服务未启动")
-
     try:
+        # 创建临时 Bot 实例发送消息
+        bot = Bot(token=settings.BOT_TOKEN)
+
         # 向管理员发送消息，触发添加媒体流程
-        await bot_instance.send_message(
+        await bot.send_message(
             current_user.telegram_id,
             f"📤 Web 端触发添加媒体\n\n"
             f"请使用以下命令开始添加:\n"
@@ -228,6 +228,9 @@ async def trigger_add_media(
             f"合集: {collection.name}\n"
             f"当前媒体数: {collection.media_count}"
         )
+
+        # 关闭 bot session
+        await bot.session.close()
 
         # 记录日志
         await create_admin_log(
