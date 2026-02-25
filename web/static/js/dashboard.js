@@ -468,11 +468,383 @@ function debounce(func, wait) {
 
 // 加载其他页面（占位）
 function loadTasks() {
-    document.getElementById('pageContent').innerHTML = '<h2>🔄 搬运任务</h2><p>功能开发中...</p>';
+    const content = document.getElementById('pageContent');
+    content.innerHTML = `
+        <div class="page-header">
+            <h2>🔄 搬运任务</h2>
+            <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
+                <select id="taskStatusFilter" class="filter-select" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="">全部状态</option>
+                    <option value="pending">等待中</option>
+                    <option value="running">执行中</option>
+                    <option value="completed">已完成</option>
+                    <option value="failed">失败</option>
+                </select>
+                <button id="createTaskBtn" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">➕ 创建任务</button>
+            </div>
+        </div>
+        <div class="tasks-container">
+            <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <thead>
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 12px; text-align: left;">任务名称</th>
+                        <th style="padding: 12px; text-align: left;">来源频道</th>
+                        <th style="padding: 12px; text-align: left;">过滤类型</th>
+                        <th style="padding: 12px; text-align: left;">状态</th>
+                        <th style="padding: 12px; text-align: left;">进度</th>
+                        <th style="padding: 12px; text-align: left;">创建时间</th>
+                        <th style="padding: 12px; text-align: left; width: 200px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tasksTable">
+                    <tr><td colspan="7" style="padding: 20px; text-align: center;">加载中...</td></tr>
+                </tbody>
+            </table>
+            <div class="pagination" id="tasksPagination" style="margin-top: 20px; text-align: center;"></div>
+        </div>
+
+        <!-- 创建任务模态框 -->
+        <div id="createTaskModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">
+            <div class="modal-content" style="background: white; margin: 5% auto; padding: 20px; width: 500px; border-radius: 8px;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>创建搬运任务</h3>
+                    <span class="close" onclick="closeCreateTaskModal()" style="cursor: pointer; font-size: 24px;">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="createTaskForm">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">任务名称</label>
+                            <input type="text" id="taskName" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">来源频道 ID</label>
+                            <input type="text" id="sourceChatId" required placeholder="-1001234567890 或 @username" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">过滤类型</label>
+                            <select id="filterType" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="all">全部媒体</option>
+                                <option value="photo">仅图片</option>
+                                <option value="video">仅视频</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">关键词过滤（用逗号分隔，可选）</label>
+                            <input type="text" id="filterKeywords" placeholder="关键词1, 关键词2" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="closeCreateTaskModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                            <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">创建</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 审核任务模态框 -->
+        <div id="approveTaskModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">
+            <div class="modal-content" style="background: white; margin: 5% auto; padding: 20px; width: 500px; border-radius: 8px;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>审核任务并创建合集</h3>
+                    <span class="close" onclick="closeApproveTaskModal()" style="cursor: pointer; font-size: 24px;">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="approveTaskForm">
+                        <input type="hidden" id="approveTaskId">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">合集名称</label>
+                            <input type="text" id="approveName" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">描述</label>
+                            <textarea id="approveDescription" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">标签（用逗号分隔）</label>
+                            <input type="text" id="approveTags" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">访问权限</label>
+                            <select id="approveAccessLevel" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="public">公开</option>
+                                <option value="vip">VIP</option>
+                            </select>
+                        </div>
+                        <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="closeApproveTaskModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                            <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">创建合集</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 设置事件监听
+    setupTasksEventListeners();
+
+    // 加载数据
+    loadTasksData();
 }
 
 function loadSessions() {
     document.getElementById('pageContent').innerHTML = '<h2>🔑 Session 管理</h2><p>功能开发中...</p>';
+}
+
+// ==================== 搬运任务管理 ====================
+
+let tasksCurrentPage = 1;
+let tasksCurrentLimit = 20;
+let tasksCurrentStatusFilter = '';
+
+// 设置搬运任务事件监听
+function setupTasksEventListeners() {
+    // 状态筛选
+    const statusFilter = document.getElementById('taskStatusFilter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', (e) => {
+            tasksCurrentStatusFilter = e.target.value;
+            tasksCurrentPage = 1;
+            loadTasksData();
+        });
+    }
+
+    // 创建任务按钮
+    const createTaskBtn = document.getElementById('createTaskBtn');
+    if (createTaskBtn) {
+        createTaskBtn.addEventListener('click', openCreateTaskModal);
+    }
+
+    // 创建任务表单提交
+    const createTaskForm = document.getElementById('createTaskForm');
+    if (createTaskForm) {
+        createTaskForm.addEventListener('submit', handleCreateTaskSubmit);
+    }
+
+    // 审核任务表单提交
+    const approveTaskForm = document.getElementById('approveTaskForm');
+    if (approveTaskForm) {
+        approveTaskForm.addEventListener('submit', handleApproveTaskSubmit);
+    }
+}
+
+// 加载搬运任务数据
+async function loadTasksData() {
+    try {
+        const params = new URLSearchParams({
+            page: tasksCurrentPage,
+            limit: tasksCurrentLimit
+        });
+
+        if (tasksCurrentStatusFilter) params.append('status', tasksCurrentStatusFilter);
+
+        const data = await apiRequest(`/api/tasks?${params}`);
+        renderTasksTable(data.tasks);
+        renderTasksPagination(data.total, data.page, data.limit);
+    } catch (error) {
+        console.error('加载任务失败:', error);
+        document.getElementById('tasksTable').innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: red;">加载失败</td></tr>';
+    }
+}
+
+// 渲染任务表格
+function renderTasksTable(tasks) {
+    const tbody = document.getElementById('tasksTable');
+
+    if (tasks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: #999;">暂无数据</td></tr>';
+        return;
+    }
+
+    const statusMap = {
+        'pending': '⏳ 等待中',
+        'running': '▶️ 执行中',
+        'completed': '✅ 已完成',
+        'failed': '❌ 失败'
+    };
+
+    const filterTypeMap = {
+        'all': '全部媒体',
+        'photo': '仅图片',
+        'video': '仅视频'
+    };
+
+    tbody.innerHTML = tasks.map(task => {
+        const progress = task.progress_total > 0
+            ? `${task.progress_current}/${task.progress_total}`
+            : '-';
+
+        const sourceChat = task.source_chat_username
+            ? `@${task.source_chat_username}`
+            : task.source_chat_id;
+
+        let actions = '';
+        if (task.status === 'completed') {
+            actions = `<button onclick="approveTask(${task.id})" style="padding: 4px 12px; margin-right: 5px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">审核</button>`;
+        }
+        actions += `<button onclick="deleteTask(${task.id}, '${task.task_name.replace(/'/g, "\\'")}'))" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>`;
+
+        return `
+        <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 12px;">${task.task_name}</td>
+            <td style="padding: 12px;">${sourceChat}</td>
+            <td style="padding: 12px;">${filterTypeMap[task.filter_type] || task.filter_type}</td>
+            <td style="padding: 12px;">${statusMap[task.status] || task.status}</td>
+            <td style="padding: 12px;">${progress}</td>
+            <td style="padding: 12px;">${new Date(task.created_at).toLocaleString('zh-CN')}</td>
+            <td style="padding: 12px;">${actions}</td>
+        </tr>
+    `;
+    }).join('');
+}
+
+// 渲染分页
+function renderTasksPagination(total, page, limit) {
+    const totalPages = Math.ceil(total / limit);
+    const pagination = document.getElementById('tasksPagination');
+
+    if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+
+    let html = '<div style="display: flex; gap: 5px; justify-content: center; align-items: center;">';
+
+    if (page > 1) {
+        html += `<button onclick="goToTasksPage(${page - 1})" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;">上一页</button>`;
+    }
+
+    html += `<span style="padding: 5px 15px;">第 ${page} / ${totalPages} 页</span>`;
+
+    if (page < totalPages) {
+        html += `<button onclick="goToTasksPage(${page + 1})" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;">下一页</button>`;
+    }
+
+    html += '</div>';
+    pagination.innerHTML = html;
+}
+
+// 跳转页面
+function goToTasksPage(page) {
+    tasksCurrentPage = page;
+    loadTasksData();
+}
+
+// 打开创建任务模态框
+function openCreateTaskModal() {
+    document.getElementById('createTaskModal').style.display = 'block';
+    document.getElementById('createTaskForm').reset();
+}
+
+// 关闭创建任务模态框
+function closeCreateTaskModal() {
+    document.getElementById('createTaskModal').style.display = 'none';
+}
+
+// 处理创建任务表单提交
+async function handleCreateTaskSubmit(e) {
+    e.preventDefault();
+
+    const taskName = document.getElementById('taskName').value;
+    const sourceChatInput = document.getElementById('sourceChatId').value.trim();
+    const filterType = document.getElementById('filterType').value;
+    const filterKeywordsInput = document.getElementById('filterKeywords').value;
+
+    // 解析频道 ID
+    let sourceChatId = 0;
+    let sourceChatUsername = null;
+
+    if (sourceChatInput.startsWith('@')) {
+        sourceChatUsername = sourceChatInput.substring(1);
+    } else {
+        try {
+            sourceChatId = parseInt(sourceChatInput);
+        } catch (e) {
+            alert('无效的频道 ID 格式');
+            return;
+        }
+    }
+
+    // 解析关键词
+    const filterKeywords = filterKeywordsInput
+        ? filterKeywordsInput.split(',').map(k => k.trim()).filter(k => k)
+        : [];
+
+    try {
+        await apiRequest('/api/tasks', {
+            method: 'POST',
+            body: JSON.stringify({
+                task_name: taskName,
+                source_chat_id: sourceChatId,
+                source_chat_username: sourceChatUsername,
+                filter_type: filterType,
+                filter_keywords: filterKeywords
+            })
+        });
+
+        closeCreateTaskModal();
+        loadTasksData();
+        alert('任务已创建，等待执行');
+    } catch (error) {
+        console.error('创建任务失败:', error);
+        alert('创建任务失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 审核任务
+async function approveTask(taskId) {
+    document.getElementById('approveTaskId').value = taskId;
+    document.getElementById('approveTaskModal').style.display = 'block';
+    document.getElementById('approveTaskForm').reset();
+}
+
+// 关闭审核任务模态框
+function closeApproveTaskModal() {
+    document.getElementById('approveTaskModal').style.display = 'none';
+}
+
+// 处理审核任务表单提交
+async function handleApproveTaskSubmit(e) {
+    e.preventDefault();
+
+    const taskId = document.getElementById('approveTaskId').value;
+    const name = document.getElementById('approveName').value;
+    const description = document.getElementById('approveDescription').value;
+    const tags = document.getElementById('approveTags').value.split(',').map(t => t.trim()).filter(t => t);
+    const access_level = document.getElementById('approveAccessLevel').value;
+
+    try {
+        const data = await apiRequest(`/api/tasks/${taskId}/approve`, {
+            method: 'POST',
+            body: JSON.stringify({ name, description, tags, access_level })
+        });
+
+        closeApproveTaskModal();
+        loadTasksData();
+        alert('合集创建成功！');
+    } catch (error) {
+        console.error('审核失败:', error);
+        alert('审核失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 删除任务
+async function deleteTask(taskId, taskName) {
+    if (!confirm(`确定要删除任务 "${taskName}" 吗？`)) {
+        return;
+    }
+
+    try {
+        await apiRequest(`/api/tasks/${taskId}`, {
+            method: 'DELETE'
+        });
+
+        loadTasksData();
+        alert('任务已删除');
+    } catch (error) {
+        console.error('删除失败:', error);
+        alert('删除失败');
+    }
 }
 
 function loadUsers() {
