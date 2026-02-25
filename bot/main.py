@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.redis import RedisStorage
 
 from config import settings
 from bot.middlewares import AuthMiddleware
@@ -58,8 +59,11 @@ async def main():
     # 创建 Bot 实例
     bot = Bot(token=settings.BOT_TOKEN, parse_mode=ParseMode.HTML)
 
-    # 创建 Dispatcher
-    dp = Dispatcher()
+    # 创建 Redis 存储用于 FSM
+    storage = RedisStorage(redis_client)
+
+    # 创建 Dispatcher，使用 Redis 存储
+    dp = Dispatcher(storage=storage)
 
     # 注册中间件
     dp.message.middleware(AuthMiddleware())
