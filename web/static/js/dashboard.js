@@ -159,17 +159,20 @@ const routes = {
 // 导航切换
 document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
-        e.preventDefault();
-
-        // 更新导航状态
-        document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
-        item.classList.add('active');
-
-        // 加载对应页面
         const page = item.dataset.page;
-        if (routes[page]) {
+
+        // 只有当链接有 data-page 属性且对应路由存在时，才阻止默认行为并动态加载
+        if (page && routes[page]) {
+            e.preventDefault();
+
+            // 更新导航状态
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            item.classList.add('active');
+
+            // 加载对应页面
             routes[page]();
         }
+        // 否则让链接正常跳转（如 /collections）
     });
 });
 
