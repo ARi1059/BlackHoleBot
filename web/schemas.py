@@ -155,7 +155,7 @@ class BanUserRequest(BaseModel):
 class TaskCreate(BaseModel):
     """创建任务"""
     task_name: str
-    source_chat_id: int
+    source_chat_id: Optional[int] = 0
     source_chat_username: Optional[str] = None
     filter_keywords: List[str] = []
     filter_type: str = "all"
