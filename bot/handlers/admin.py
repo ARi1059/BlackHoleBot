@@ -70,7 +70,6 @@ async def handle_media_upload(message: Message, state: FSMContext):
     """接收媒体文件"""
     data = await state.get_data()
     media_list = data.get("media_list", [])
-    processed_groups = data.get("processed_groups", set())  # 已处理的媒体组ID
 
     # 提取文件信息
     if message.photo:
@@ -84,12 +83,10 @@ async def handle_media_upload(message: Message, state: FSMContext):
         file_type = "video"
         file_size = message.video.file_size
     else:
-        await message.answer("❌ 不支持的文件类型")
         return
 
     # 检查是否重复
     if any(m["file_unique_id"] == file_unique_id for m in media_list):
-        await message.answer("⚠️ 文件已存在，已跳过")
         return
 
     # 添加到列表
@@ -101,18 +98,7 @@ async def handle_media_upload(message: Message, state: FSMContext):
         "caption": message.caption
     })
 
-    # 处理通知：每个媒体组只通知一次
-    media_group_id = message.media_group_id
-    if media_group_id:
-        # 如果这个媒体组还没处理过，通知一次
-        if media_group_id not in processed_groups:
-            processed_groups.add(media_group_id)
-            await message.answer(f"✅ 已接收 {len(media_list)} 个文件")
-    else:
-        # 单个文件，直接通知
-        await message.answer(f"✅ 已接收 {len(media_list)} 个文件")
-
-    await state.update_data(media_list=media_list, processed_groups=processed_groups)
+    await state.update_data(media_list=media_list)
 
 
 @router.message(UploadStates.waiting_for_media, Command("done"))
