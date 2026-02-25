@@ -7,11 +7,15 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.pool import NullPool
 from typing import AsyncGenerator
 import logging
+import redis.asyncio as redis
 
 from config import settings
 from .models import Base
 
 logger = logging.getLogger(__name__)
+
+# 创建 Redis 客户端
+redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 # 创建异步引擎
 engine = create_async_engine(
