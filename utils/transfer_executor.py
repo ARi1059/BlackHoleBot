@@ -143,7 +143,11 @@ class TransferExecutor:
         try:
             # 获取频道实体
             try:
-                channel = await client.get_entity(task.source_chat_id)
+                # 优先使用 username，如果没有则使用 chat_id
+                if task.source_chat_username:
+                    channel = await client.get_entity(task.source_chat_username)
+                else:
+                    channel = await client.get_entity(task.source_chat_id)
             except (ChannelPrivateError, ChatAdminRequiredError):
                 raise Exception("无法访问频道，请确保账号已加入该频道")
 
