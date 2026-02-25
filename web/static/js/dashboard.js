@@ -1209,10 +1209,12 @@ async function handleCreateTaskSubmit(e) {
     // 如果不是全频道搬运，且有时间范围，则添加时间过滤
     if (!transferAllHistory) {
         if (filterDateFrom) {
-            requestData.filter_date_from = new Date(filterDateFrom).toISOString();
+            // 移除时区信息，只发送本地时间
+            requestData.filter_date_from = filterDateFrom.replace('T', ' ') + ':00';
         }
         if (filterDateTo) {
-            requestData.filter_date_to = new Date(filterDateTo).toISOString();
+            // 移除时区信息，只发送本地时间
+            requestData.filter_date_to = filterDateTo.replace('T', ' ') + ':00';
         }
     }
 
