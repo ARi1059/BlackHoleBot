@@ -26,6 +26,7 @@ class SessionManager:
 
     def __init__(self):
         self.active_clients: Dict[int, TelegramClient] = {}
+        self.login_clients: Dict[str, TelegramClient] = {}  # 用于保存登录过程中的客户端
 
     async def login_session(
         self,
@@ -48,46 +49,69 @@ class SessionManager:
         Returns:
             登录结果字典
         """
-        client = TelegramClient(
-            StringSession(),
-            api_id,
-            api_hash
-        )
-
-        await client.connect()
+        # 使用手机号作为 key 来保存登录过程中的客户端
+        client_key = phone
 
         try:
             if not code:
-                # 发送验证码
+                # 第一步：发送验证码
+                client = TelegramClient(
+                    StringSession(),
+                    api_id,
+                    api_hash
+                )
+                await client.connect()
                 await client.send_code_request(phone)
-                await client.disconnect()
+
+                # 保存客户端供后续步骤使用
+                self.login_clients[client_key] = client
+
                 return {
                     "status": "code_sent",
                     "message": "验证码已发送到手机"
                 }
+
+            # 获取之前保存的客户端
+            if client_key not in self.login_clients:
+                # 如果没有保存的客户端，创建新的
+                client = TelegramClient(
+                    StringSession(),
+                    api_id,
+                    api_hash
+                )
+                await client.connect()
+                self.login_clients[client_key] = client
+            else:
+                client = self.login_clients[client_key]
 
             # 使用验证码登录
             try:
                 await client.sign_in(phone, code)
             except SessionPasswordNeededError:
                 if not password:
-                    await client.disconnect()
+                    # 需要两步验证密码，保持客户端连接
                     return {
                         "status": "password_required",
                         "message": "需要两步验证密码"
                     }
+                # 使用两步验证密码登录
                 await client.sign_in(password=password)
             except PhoneCodeInvalidError:
+                # 验证码无效，清理客户端
                 await client.disconnect()
+                del self.login_clients[client_key]
                 return {
                     "status": "error",
                     "message": "验证码无效"
                 }
 
-            # 获取 session_string
+            # 登录成功，获取 session_string
             session_string = client.session.save()
 
+            # 清理客户端
             await client.disconnect()
+            if client_key in self.login_clients:
+                del self.login_clients[client_key]
 
             return {
                 "status": "success",
@@ -96,7 +120,14 @@ class SessionManager:
             }
 
         except Exception as e:
-            await client.disconnect()
+            # 出错时清理客户端
+            if client_key in self.login_clients:
+                try:
+                    await self.login_clients[client_key].disconnect()
+                except:
+                    pass
+                del self.login_clients[client_key]
+
             return {
                 "status": "error",
                 "message": f"登录失败: {str(e)}"
