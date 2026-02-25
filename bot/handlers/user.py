@@ -359,12 +359,20 @@ async def cmd_help(message: Message):
 @router.message(Command("myinfo"))
 async def cmd_myinfo(message: Message, user: User):
     """处理 /myinfo 命令"""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"用户角色调试: {user.role}, 类型: {type(user.role)}, 值: {user.role.value if hasattr(user.role, 'value') else 'N/A'}")
+    logger.info(f"是否等于 SUPER_ADMIN: {user.role == UserRole.SUPER_ADMIN}")
+
     role_names = {
         UserRole.USER: "👤 普通用户",
         UserRole.VIP: "💎 VIP 用户",
         UserRole.ADMIN: "👨‍💼 管理员",
         UserRole.SUPER_ADMIN: "👑 超级管理员"
     }
+
+    logger.info(f"字典查找结果: {role_names.get(user.role, '未找到')}")
 
     info_text = (
         "👤 个人信息\n\n"
@@ -377,3 +385,4 @@ async def cmd_myinfo(message: Message, user: User):
     )
 
     await message.answer(info_text)
+
