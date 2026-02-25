@@ -265,7 +265,9 @@ function renderCollectionsTable(collections) {
         return;
     }
 
-    tbody.innerHTML = collections.map(col => `
+    tbody.innerHTML = collections.map(col => {
+        const escapedName = col.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        return `
         <tr style="border-bottom: 1px solid #e0e0e0;">
             <td style="padding: 12px;">
                 <input type="checkbox" class="collection-checkbox" data-id="${col.id}" onchange="handleCollectionCheckbox(${col.id}, this.checked)">
@@ -277,10 +279,11 @@ function renderCollectionsTable(collections) {
             <td style="padding: 12px;">${new Date(col.created_at).toLocaleString('zh-CN')}</td>
             <td style="padding: 12px;">
                 <button onclick="editCollection(${col.id})" style="padding: 4px 12px; margin-right: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">编辑</button>
-                <button onclick="deleteCollection(${col.id}, '${col.name}')" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>
+                <button onclick="deleteCollection(${col.id}, '${escapedName}')" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // 渲染分页
