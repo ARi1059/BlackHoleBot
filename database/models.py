@@ -48,7 +48,7 @@ class User(Base):
     username = Column(String(255))
     first_name = Column(String(255))
     last_name = Column(String(255))
-    role = Column(SQLEnum(UserRole, native_enum=False), default=UserRole.USER, nullable=False, index=True)
+    role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False, index=True)
     is_banned = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     last_active_at = Column(DateTime, default=datetime.now, nullable=False)
