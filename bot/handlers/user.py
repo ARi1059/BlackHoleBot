@@ -340,7 +340,7 @@ async def cmd_help(message: Message):
         "📖 BlackHoleBot 使用帮助\n\n"
         "🔹 基础命令:\n"
         "/start - 启动 Bot\n"
-        "/search <关键词> - 搜索合集\n"
+        "/search [关键词] - 搜索合集\n"
         "/help - 查看帮助\n"
         "/myinfo - 查看个人信息\n\n"
         "🔹 使用方法:\n"
