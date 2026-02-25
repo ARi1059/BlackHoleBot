@@ -17,8 +17,9 @@ from database.crud import (
     create_media,
     update_collection,
     create_admin_log,
+    get_collection,
 )
-from bot.states import UploadStates
+from bot.states import UploadStates, AddMediaStates
 from utils import generate_unique_deep_link_code, create_deep_link
 from config import settings
 
@@ -295,5 +296,165 @@ async def cmd_cancel(message: Message, state: FSMContext):
 
     await state.clear()
     await message.answer("✅ 已取消操作")
+
+
+# ==================== 向现有合集添加媒体 ====================
+
+@router.message(Command("add_media"))
+@require_admin
+async def cmd_add_media(message: Message, user: User, state: FSMContext, db: AsyncSession):
+    """
+    向现有合集添加媒体
+
+    命令: /add_media <collection_id>
+    """
+    # 解析参数
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("❌ 请提供合集 ID\n\n用法: /add_media <collection_id>")
+        return
+
+    try:
+        collection_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ 合集 ID 必须是数字")
+        return
+
+    # 检查合集是否存在
+    collection = await get_collection(db, collection_id)
+    if not collection:
+        await message.answer("❌ 合集不存在")
+        return
+
+    # 检查权限（只有创建者或超级管理员可以添加）
+    if collection.created_by != user.id and user.role != UserRole.SUPER_ADMIN:
+        await message.answer("❌ 权限不足，只有合集创建者或超级管理员可以添加媒体")
+        return
+
+    await state.clear()
+    await state.set_state(AddMediaStates.waiting_for_media)
+    await state.update_data(
+        collection_id=collection_id,
+        collection_name=collection.name,
+        media_list=[],
+        current_media_count=collection.media_count
+    )
+
+    await message.answer(
+        f"📤 向合集 「{collection.name}」 添加媒体\n\n"
+        f"当前媒体数: {collection.media_count}\n\n"
+        f"请发送媒体文件（图片或视频）\n"
+        f"• 可以一次发送多个文件\n"
+        f"• 支持媒体组（最多10个）\n"
+        f"• 完成后发送 /done\n\n"
+        f"💡 提示: 发送 /cancel 可随时取消"
+    )
+
+
+@router.message(AddMediaStates.waiting_for_media, F.photo | F.video)
+async def handle_add_media_upload(message: Message, state: FSMContext):
+    """接收要添加的媒体文件"""
+    data = await state.get_data()
+    media_list = data.get("media_list", [])
+
+    # 提取文件信息
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        file_unique_id = message.photo[-1].file_unique_id
+        file_type = "photo"
+        file_size = message.photo[-1].file_size
+    elif message.video:
+        file_id = message.video.file_id
+        file_unique_id = message.video.file_unique_id
+        file_type = "video"
+        file_size = message.video.file_size
+    else:
+        return
+
+    # 检查是否重复
+    if any(m["file_unique_id"] == file_unique_id for m in media_list):
+        return
+
+    # 添加到列表
+    media_list.append({
+        "file_id": file_id,
+        "file_unique_id": file_unique_id,
+        "file_type": file_type,
+        "file_size": file_size,
+        "caption": message.caption
+    })
+
+    await state.update_data(media_list=media_list)
+
+
+@router.message(AddMediaStates.waiting_for_media, Command("done"))
+async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db: AsyncSession):
+    """完成添加媒体"""
+    data = await state.get_data()
+    media_list = data.get("media_list", [])
+    collection_id = data.get("collection_id")
+    collection_name = data.get("collection_name")
+    current_media_count = data.get("current_media_count", 0)
+
+    # 验证
+    if not media_list:
+        await message.answer("❌ 还没有上传任何媒体文件")
+        return
+
+    # 检查总数是否超限
+    total_count = current_media_count + len(media_list)
+    if total_count > settings.MAX_MEDIA_PER_COLLECTION:
+        await message.answer(
+            f"❌ 添加后总媒体数将超过限制\n"
+            f"当前: {current_media_count}\n"
+            f"新增: {len(media_list)}\n"
+            f"限制: {settings.MAX_MEDIA_PER_COLLECTION}"
+        )
+        return
+
+    try:
+        # 批量插入媒体
+        for index, media_data in enumerate(media_list):
+            await create_media(
+                db,
+                collection_id=collection_id,
+                file_id=media_data["file_id"],
+                file_unique_id=media_data["file_unique_id"],
+                file_type=media_data["file_type"],
+                order_index=current_media_count + index,
+                file_size=media_data.get("file_size"),
+                caption=media_data.get("caption")
+            )
+
+        # 更新合集媒体数量
+        await update_collection(db, collection_id, media_count=total_count)
+
+        # 记录日志
+        await create_admin_log(
+            db,
+            user_id=user.id,
+            action="add_media",
+            details={
+                "collection_id": collection_id,
+                "collection_name": collection_name,
+                "added_count": len(media_list),
+                "total_count": total_count
+            }
+        )
+
+        # 清除状态
+        await state.clear()
+
+        await message.answer(
+            f"✅ 添加成功！\n\n"
+            f"📦 合集: {collection_name}\n"
+            f"➕ 新增媒体: {len(media_list)}\n"
+            f"📊 总媒体数: {total_count}"
+        )
+
+    except Exception as e:
+        error_msg = str(e).replace('<', '&lt;').replace('>', '&gt;')
+        await message.answer(f"❌ 添加失败: {error_msg}")
+
 
 

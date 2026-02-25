@@ -169,6 +169,7 @@ async function loadCollections() {
                         </div>
                         <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
                             <button type="button" class="btn btn-secondary" onclick="closeEditModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                            <button type="button" class="btn btn-success" onclick="triggerAddMedia()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">➕ 新增资源</button>
                             <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
                         </div>
                     </form>
@@ -427,6 +428,28 @@ async function batchDeleteCollections() {
     } catch (error) {
         console.error('批量删除失败:', error);
         alert('批量删除失败');
+    }
+}
+
+// 触发添加媒体
+async function triggerAddMedia() {
+    const collectionId = document.getElementById('editCollectionId').value;
+
+    if (!collectionId) {
+        alert('无法获取合集 ID');
+        return;
+    }
+
+    try {
+        const data = await apiRequest(`/api/collections/${collectionId}/trigger-add-media`, {
+            method: 'POST'
+        });
+
+        closeEditModal();
+        alert(data.message || '已通知 Bot，请在 Telegram 中继续操作');
+    } catch (error) {
+        console.error('触发添加媒体失败:', error);
+        alert('触发失败: ' + (error.message || '未知错误'));
     }
 }
 

@@ -15,6 +15,11 @@ class UploadStates(StatesGroup):
     waiting_for_permission = State()  # 等待选择权限
 
 
+class AddMediaStates(StatesGroup):
+    """向现有合集添加媒体状态"""
+    waiting_for_media = State()       # 等待上传媒体
+
+
 class TransferTaskStates(StatesGroup):
     """搬运任务状态"""
     waiting_for_chat_id = State()     # 等待输入频道 ID

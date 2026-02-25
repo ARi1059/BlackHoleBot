@@ -194,3 +194,54 @@ async def batch_delete_collections(
     )
 
     return SuccessResponse(message=f"已删除 {deleted_count} 个合集")
+
+
+@router.post("/{collection_id}/trigger-add-media", response_model=SuccessResponse)
+async def trigger_add_media(
+    collection_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    """
+    触发 Bot 向指定合集添加媒体
+
+    需要管理员权限
+    """
+    from bot import bot_instance
+
+    # 检查合集是否存在
+    collection = await get_collection(db, collection_id)
+    if not collection:
+        raise HTTPException(status_code=404, detail="合集不存在")
+
+    # 检查 bot 实例是否存在
+    if not bot_instance:
+        raise HTTPException(status_code=503, detail="Bot 服务未启动")
+
+    try:
+        # 向管理员发送消息，触发添加媒体流程
+        await bot_instance.send_message(
+            current_user.telegram_id,
+            f"📤 Web 端触发添加媒体\n\n"
+            f"请使用以下命令开始添加:\n"
+            f"/add_media {collection_id}\n\n"
+            f"合集: {collection.name}\n"
+            f"当前媒体数: {collection.media_count}"
+        )
+
+        # 记录日志
+        await create_admin_log(
+            db,
+            user_id=current_user.id,
+            action="trigger_add_media",
+            details={
+                "collection_id": collection_id,
+                "collection_name": collection.name
+            }
+        )
+
+        return SuccessResponse(message="已通知 Bot，请在 Telegram 中继续操作")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"发送消息失败: {str(e)}")
+
