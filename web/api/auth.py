@@ -5,12 +5,13 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 import hashlib
 import hmac
 from datetime import datetime, timedelta
 from jose import jwt
 
-from database.connection import get_db
+from database.connection import get_db, redis_client
 from database.crud import get_user_by_telegram_id
 from database.models import UserRole
 from web.schemas import TelegramAuthData, TokenResponse, UserInfo
@@ -18,6 +19,12 @@ from web.dependencies import get_current_user
 from config import settings
 
 router = APIRouter()
+
+
+class LoginRequest(BaseModel):
+    """登录请求"""
+    telegram_id: int
+    password: str
 
 
 def verify_telegram_auth(auth_data: dict, bot_token: str) -> bool:
@@ -69,6 +76,60 @@ def create_access_token(data: dict) -> str:
         to_encode,
         settings.SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM
+    )
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login_with_code(
+    login_data: LoginRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    使用验证码登录
+
+    用户在 Bot 中使用 /login 命令获取验证码，然后在此接口验证
+    """
+    # 从 Redis 获取验证码
+    redis_key = f"web_login:{login_data.telegram_id}"
+    stored_code = await redis_client.get(redis_key)
+
+    if not stored_code:
+        raise HTTPException(status_code=401, detail="验证码不存在或已过期，请在 Bot 中发送 /login 获取新验证码")
+
+    # 验证验证码
+    if stored_code.decode() != login_data.password:
+        raise HTTPException(status_code=401, detail="验证码错误")
+
+    # 验证通过，删除验证码
+    await redis_client.delete(redis_key)
+
+    # 获取用户
+    user = await get_user_by_telegram_id(db, login_data.telegram_id)
+    if not user:
+        raise HTTPException(status_code=403, detail="用户不存在")
+
+    # 检查权限
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(status_code=403, detail="权限不足，仅管理员可访问")
+
+    # 检查是否被封禁
+    if user.is_banned:
+        raise HTTPException(status_code=403, detail="账号已被封禁")
+
+    # 生成 token
+    token = create_access_token(
+        data={"user_id": user.id, "role": user.role.value}
+    )
+
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        user={
+            "id": user.telegram_id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "role": user.role.value
+        }
     )
 
 

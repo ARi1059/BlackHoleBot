@@ -7,6 +7,8 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from sqlalchemy.ext.asyncio import AsyncSession
+import random
+import string
 
 from database import User, UserRole, AccessLevel
 from database.crud import (
@@ -385,4 +387,35 @@ async def cmd_myinfo(message: Message, user: User):
     )
 
     await message.answer(info_text)
+
+
+@router.message(Command("login"))
+async def cmd_login(message: Message, user: User):
+    """处理 /login 命令 - 生成 Web 登录验证码"""
+    # 检查用户是否是管理员
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        await message.answer("❌ 只有管理员才能登录 Web 后台")
+        return
+
+    # 生成 6 位数字验证码
+    code = ''.join(random.choices(string.digits, k=6))
+
+    # 保存到 Redis，有效期 5 分钟
+    try:
+        from database.connection import redis_client
+        await redis_client.setex(
+            f"web_login:{user.telegram_id}",
+            300,  # 5 分钟
+            code
+        )
+
+        await message.answer(
+            f"🔐 Web 后台登录验证码\n\n"
+            f"验证码: <code>{code}</code>\n"
+            f"有效期: 5 分钟\n\n"
+            f"请在 Web 登录页面输入您的 Telegram ID 和此验证码",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await message.answer(f"❌ 生成验证码失败: {str(e)}")
 
