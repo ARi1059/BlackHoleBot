@@ -15,6 +15,7 @@ from database import User, UserRole, AccessLevel
 from database.crud import (
     create_collection,
     create_media,
+    update_collection,
     create_admin_log,
 )
 from bot.states import UploadStates
