@@ -42,7 +42,7 @@ async def receive_transferred_media(message: Message, redis_client):
                 "file_unique_id": message.photo[-1].file_unique_id,
                 "file_type": "photo",
                 "file_size": message.photo[-1].file_size,
-                "caption": message.caption
+                "caption": getattr(message, 'caption', None)
             }
         elif message.video:
             file_data = {
@@ -50,7 +50,7 @@ async def receive_transferred_media(message: Message, redis_client):
                 "file_unique_id": message.video.file_unique_id,
                 "file_type": "video",
                 "file_size": message.video.file_size,
-                "caption": message.caption
+                "caption": getattr(message, 'caption', None)
             }
 
         if not file_data:

@@ -93,7 +93,7 @@ async def handle_media_upload(message: Message, state: FSMContext):
         "file_unique_id": file_unique_id,
         "file_type": file_type,
         "file_size": file_size,
-        "caption": message.caption
+        "caption": getattr(message, 'caption', None)
     })
 
     await state.update_data(media_list=media_list)
@@ -387,7 +387,7 @@ async def handle_add_media_upload(message: Message, state: FSMContext):
         "file_unique_id": file_unique_id,
         "file_type": file_type,
         "file_size": file_size,
-        "caption": message.caption
+        "caption": getattr(message, 'caption', None)
     })
 
     await state.update_data(media_list=media_list)
