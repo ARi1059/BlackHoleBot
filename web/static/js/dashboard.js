@@ -588,7 +588,281 @@ function loadTasks() {
 }
 
 function loadSessions() {
-    document.getElementById('pageContent').innerHTML = '<h2>🔑 Session 管理</h2><p>功能开发中...</p>';
+    const content = document.getElementById('pageContent');
+    content.innerHTML = `
+        <div class="page-header">
+            <h2>🔑 Session 管理</h2>
+            <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
+                <button id="addSessionBtn" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">➕ 添加账号</button>
+            </div>
+        </div>
+        <div class="sessions-container">
+            <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <thead>
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 12px; text-align: left;">手机号</th>
+                        <th style="padding: 12px; text-align: left;">优先级</th>
+                        <th style="padding: 12px; text-align: left;">状态</th>
+                        <th style="padding: 12px; text-align: left;">搬运次数</th>
+                        <th style="padding: 12px; text-align: left;">冷却时间</th>
+                        <th style="padding: 12px; text-align: left;">最后使用</th>
+                        <th style="padding: 12px; text-align: left; width: 200px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="sessionsTable">
+                    <tr><td colspan="7" style="padding: 20px; text-align: center;">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 添加 Session 模态框 -->
+        <div id="addSessionModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">
+            <div class="modal-content" style="background: white; margin: 5% auto; padding: 20px; width: 500px; border-radius: 8px;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>添加 Session 账号</h3>
+                    <span class="close" onclick="closeAddSessionModal()" style="cursor: pointer; font-size: 24px;">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="addSessionForm">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">手机号（带国家码）</label>
+                            <input type="text" id="sessionPhone" required placeholder="+8613800138000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">API ID</label>
+                            <input type="number" id="sessionApiId" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">API Hash</label>
+                            <input type="text" id="sessionApiHash" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">验证码（可选）</label>
+                            <input type="text" id="sessionCode" placeholder="收到验证码后填写" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">两步验证密码（可选）</label>
+                            <input type="password" id="sessionPassword" placeholder="如有两步验证则填写" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="closeAddSessionModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                            <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">登录</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑 Session 模态框 -->
+        <div id="editSessionModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">
+            <div class="modal-content" style="background: white; margin: 5% auto; padding: 20px; width: 500px; border-radius: 8px;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>编辑 Session 账号</h3>
+                    <span class="close" onclick="closeEditSessionModal()" style="cursor: pointer; font-size: 24px;">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="editSessionForm">
+                        <input type="hidden" id="editSessionId">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px;">优先级</label>
+                            <input type="number" id="editSessionPriority" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <small style="color: #666;">数字越大优先级越高</small>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="editSessionActive">
+                                <span>启用此账号</span>
+                            </label>
+                        </div>
+                        <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="closeEditSessionModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                            <button type="submit" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 设置事件监听
+    setupSessionsEventListeners();
+
+    // 加载数据
+    loadSessionsData();
+}
+
+// ==================== Session 管理 ====================
+
+// 设置 Session 事件监听
+function setupSessionsEventListeners() {
+    // 添加账号按钮
+    const addSessionBtn = document.getElementById('addSessionBtn');
+    if (addSessionBtn) {
+        addSessionBtn.addEventListener('click', openAddSessionModal);
+    }
+
+    // 添加 Session 表单提交
+    const addSessionForm = document.getElementById('addSessionForm');
+    if (addSessionForm) {
+        addSessionForm.addEventListener('submit', handleAddSessionSubmit);
+    }
+
+    // 编辑 Session 表单提交
+    const editSessionForm = document.getElementById('editSessionForm');
+    if (editSessionForm) {
+        editSessionForm.addEventListener('submit', handleEditSessionSubmit);
+    }
+}
+
+// 加载 Session 数据
+async function loadSessionsData() {
+    try {
+        const data = await apiRequest('/api/sessions');
+        renderSessionsTable(data);
+    } catch (error) {
+        console.error('加载 Session 失败:', error);
+        document.getElementById('sessionsTable').innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: red;">加载失败</td></tr>';
+    }
+}
+
+// 渲染 Session 表格
+function renderSessionsTable(sessions) {
+    const tbody = document.getElementById('sessionsTable');
+
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: #999;">暂无数据</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = sessions.map(session => {
+        const status = session.is_active ? '✅ 启用' : '❌ 禁用';
+        const cooldown = session.cooldown_until
+            ? new Date(session.cooldown_until) > new Date()
+                ? `冷却至 ${new Date(session.cooldown_until).toLocaleString('zh-CN')}`
+                : '-'
+            : '-';
+        const lastUsed = session.last_used_at
+            ? new Date(session.last_used_at).toLocaleString('zh-CN')
+            : '从未使用';
+
+        return `
+        <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 12px;">${session.phone_number}</td>
+            <td style="padding: 12px;">${session.priority}</td>
+            <td style="padding: 12px;">${status}</td>
+            <td style="padding: 12px;">${session.transfer_count}</td>
+            <td style="padding: 12px;">${cooldown}</td>
+            <td style="padding: 12px;">${lastUsed}</td>
+            <td style="padding: 12px;">
+                <button onclick="editSession(${session.id}, ${session.priority}, ${session.is_active})" style="padding: 4px 12px; margin-right: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">编辑</button>
+                <button onclick="deleteSession(${session.id}, '${session.phone_number}')" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>
+            </td>
+        </tr>
+    `;
+    }).join('');
+}
+
+// 打开添加 Session 模态框
+function openAddSessionModal() {
+    document.getElementById('addSessionModal').style.display = 'block';
+    document.getElementById('addSessionForm').reset();
+}
+
+// 关闭添加 Session 模态框
+function closeAddSessionModal() {
+    document.getElementById('addSessionModal').style.display = 'none';
+}
+
+// 处理添加 Session 表单提交
+async function handleAddSessionSubmit(e) {
+    e.preventDefault();
+
+    const phone_number = document.getElementById('sessionPhone').value;
+    const api_id = parseInt(document.getElementById('sessionApiId').value);
+    const api_hash = document.getElementById('sessionApiHash').value;
+    const code = document.getElementById('sessionCode').value || null;
+    const password = document.getElementById('sessionPassword').value || null;
+
+    try {
+        const data = await apiRequest('/api/sessions/login', {
+            method: 'POST',
+            body: JSON.stringify({
+                phone_number,
+                api_id,
+                api_hash,
+                code,
+                password
+            })
+        });
+
+        if (data.success) {
+            closeAddSessionModal();
+            loadSessionsData();
+            alert(data.message || '登录成功');
+        } else if (data.password_required) {
+            alert(data.message || '需要输入两步验证密码');
+        } else {
+            alert(data.message || '登录失败');
+        }
+    } catch (error) {
+        console.error('添加 Session 失败:', error);
+        alert('添加失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 编辑 Session
+function editSession(sessionId, priority, isActive) {
+    document.getElementById('editSessionId').value = sessionId;
+    document.getElementById('editSessionPriority').value = priority;
+    document.getElementById('editSessionActive').checked = isActive;
+    document.getElementById('editSessionModal').style.display = 'block';
+}
+
+// 关闭编辑 Session 模态框
+function closeEditSessionModal() {
+    document.getElementById('editSessionModal').style.display = 'none';
+}
+
+// 处理编辑 Session 表单提交
+async function handleEditSessionSubmit(e) {
+    e.preventDefault();
+
+    const sessionId = document.getElementById('editSessionId').value;
+    const priority = parseInt(document.getElementById('editSessionPriority').value);
+    const is_active = document.getElementById('editSessionActive').checked;
+
+    try {
+        await apiRequest(`/api/sessions/${sessionId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ priority, is_active })
+        });
+
+        closeEditSessionModal();
+        loadSessionsData();
+        alert('更新成功');
+    } catch (error) {
+        console.error('更新失败:', error);
+        alert('更新失败');
+    }
+}
+
+// 删除 Session
+async function deleteSession(sessionId, phoneNumber) {
+    if (!confirm(`确定要删除账号 "${phoneNumber}" 吗？`)) {
+        return;
+    }
+
+    try {
+        await apiRequest(`/api/sessions/${sessionId}`, {
+            method: 'DELETE'
+        });
+
+        loadSessionsData();
+        alert('账号已删除');
+    } catch (error) {
+        console.error('删除失败:', error);
+        alert('删除失败');
+    }
 }
 
 // ==================== 搬运任务管理 ====================
