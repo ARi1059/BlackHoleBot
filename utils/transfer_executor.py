@@ -356,10 +356,21 @@ class TransferExecutor:
                 else:
                     logger.info(f"消息 {message.id} 无文本，直接通过")
 
-            # 日期范围过滤
-            if task.filter_date_from and message.date < task.filter_date_from:
+        # 日期范围过滤（只比较日期部分，不比较时间）
+        if task.filter_date_from:
+            # 将 message.date 转换为日期（忽略时间和时区）
+            message_date = message.date.date()
+            # 将 filter_date_from 转换为日期
+            filter_from_date = task.filter_date_from.date() if hasattr(task.filter_date_from, 'date') else task.filter_date_from
+            if message_date < filter_from_date:
                 return False
-            if task.filter_date_to and message.date > task.filter_date_to:
+
+        if task.filter_date_to:
+            # 将 message.date 转换为日期（忽略时间和时区）
+            message_date = message.date.date()
+            # 将 filter_date_to 转换为日期
+            filter_to_date = task.filter_date_to.date() if hasattr(task.filter_date_to, 'date') else task.filter_date_to
+            if message_date > filter_to_date:
                 return False
 
             return True

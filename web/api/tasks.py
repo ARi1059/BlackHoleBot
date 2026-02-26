@@ -85,6 +85,31 @@ async def create_task(
 
     需要管理员权限
     """
+    # 处理日期字符串，转换为 datetime 对象
+    from datetime import datetime, date
+
+    filter_date_from = None
+    filter_date_to = None
+
+    if task_data.filter_date_from:
+        if isinstance(task_data.filter_date_from, str):
+            # 将日期字符串转换为 datetime 对象（时间设为 00:00:00）
+            filter_date_from = datetime.strptime(task_data.filter_date_from, "%Y-%m-%d")
+        elif isinstance(task_data.filter_date_from, date):
+            filter_date_from = datetime.combine(task_data.filter_date_from, datetime.min.time())
+        else:
+            filter_date_from = task_data.filter_date_from
+
+    if task_data.filter_date_to:
+        if isinstance(task_data.filter_date_to, str):
+            # 将日期字符串转换为 datetime 对象（时间设为 23:59:59）
+            filter_date_to = datetime.strptime(task_data.filter_date_to, "%Y-%m-%d")
+            filter_date_to = filter_date_to.replace(hour=23, minute=59, second=59)
+        elif isinstance(task_data.filter_date_to, date):
+            filter_date_to = datetime.combine(task_data.filter_date_to, datetime.max.time())
+        else:
+            filter_date_to = task_data.filter_date_to
+
     # 创建任务
     task = await create_transfer_task(
         db,
@@ -93,8 +118,8 @@ async def create_task(
         source_chat_username=task_data.source_chat_username,
         filter_keywords=task_data.filter_keywords,
         filter_type=task_data.filter_type,
-        filter_date_from=task_data.filter_date_from,
-        filter_date_to=task_data.filter_date_to,
+        filter_date_from=filter_date_from,
+        filter_date_to=filter_date_to,
         created_by=current_user.id
     )
 

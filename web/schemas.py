@@ -4,8 +4,8 @@ Pydantic 数据模型
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Union
+from datetime import datetime, date
 
 
 # ==================== 认证相关 ====================
@@ -159,8 +159,8 @@ class TaskCreate(BaseModel):
     source_chat_username: Optional[str] = None
     filter_keywords: List[str] = []
     filter_type: str = "all"
-    filter_date_from: Optional[datetime] = None
-    filter_date_to: Optional[datetime] = None
+    filter_date_from: Optional[Union[date, str]] = None
+    filter_date_to: Optional[Union[date, str]] = None
 
 
 class TaskResponse(BaseModel):

@@ -540,15 +540,15 @@ function loadTasks() {
                             <small style="color: #666; display: block; margin-top: 5px;">勾选后将搬运频道的所有历史消息，不勾选则只搬运指定时间范围内的消息</small>
                         </div>
                         <div id="dateRangeGroup" class="form-group" style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px;">时间范围（可选）</label>
+                            <label style="display: block; margin-bottom: 5px;">日期范围（可选）</label>
                             <div style="display: flex; gap: 10px; align-items: center;">
                                 <div style="flex: 1;">
-                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">开始时间</label>
-                                    <input type="datetime-local" id="filterDateFrom" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">开始日期</label>
+                                    <input type="date" id="filterDateFrom" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                                 </div>
                                 <div style="flex: 1;">
-                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">结束时间</label>
-                                    <input type="datetime-local" id="filterDateTo" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">结束日期</label>
+                                    <input type="date" id="filterDateTo" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                                 </div>
                             </div>
                             <small style="color: #666; display: block; margin-top: 5px;">不填写则搬运所有消息</small>
@@ -1209,12 +1209,12 @@ async function handleCreateTaskSubmit(e) {
     // 如果不是全频道搬运，且有时间范围，则添加时间过滤
     if (!transferAllHistory) {
         if (filterDateFrom) {
-            // 移除时区信息，只发送本地时间
-            requestData.filter_date_from = filterDateFrom.replace('T', ' ') + ':00';
+            // 只发送日期，格式：YYYY-MM-DD
+            requestData.filter_date_from = filterDateFrom;
         }
         if (filterDateTo) {
-            // 移除时区信息，只发送本地时间
-            requestData.filter_date_to = filterDateTo.replace('T', ' ') + ':00';
+            // 只发送日期，格式：YYYY-MM-DD
+            requestData.filter_date_to = filterDateTo;
         }
     }
 
