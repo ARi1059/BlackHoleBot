@@ -8,7 +8,7 @@ import json
 import logging
 import sys
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from telethon.errors import FloodWaitError, ChannelPrivateError, ChatAdminRequiredError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,7 +47,7 @@ logger.addHandler(file_handler)
 
 # 测试日志 - 模块加载时打印
 logger.info("=" * 80)
-logger.info("transfer_executor 模块已加载，日志系统已初始化")
+logger.info("transfer_executor 模块已加载，日志系统已初始化 - VERSION 2.0")
 logger.info("=" * 80)
 
 
@@ -183,132 +183,151 @@ class TransferExecutor:
             redis_key = f"task:{task.id}:files"
             await update_transfer_task(db, task.id, temp_redis_key=redis_key)
 
-            # 统计总消息数（用于进度显示）
-            total_messages = 0
-            async for _ in client.iter_messages(channel, limit=None):
-                total_messages += 1
-
-            await update_transfer_task(db, task.id, progress_total=total_messages)
-
             # 遍历消息并转发
             transferred_count = 0
-            logger.info(f"开始遍历频道消息，总消息数: {total_messages}")
+            matched_count = 0  # 匹配成功的消息数
+            logger.info(f"开始遍历频道消息")
 
-            async for message in client.iter_messages(
-                channel,
-                limit=None,
-                reverse=False
-            ):
-                # 检查 Bot 是否限流
-                while bot_rate_limiter.is_bot_limited():
-                    await asyncio.sleep(1)
+            try:
+                async for message in client.iter_messages(
+                    channel,
+                    limit=None,
+                    reverse=False
+                ):
+                    # 检查 Bot 是否限流
+                    while bot_rate_limiter.is_bot_limited():
+                        await asyncio.sleep(1)
 
-                # 应用过滤条件
-                if not await self._apply_filters(message, task):
-                    continue
-
-                # 检查 session 限流
-                if await session_rate_limiter.check_and_update(db, session_account.id, task.id):
-                    # 需要冷却，切换 session
-                    await create_task_log(
-                        db,
-                        task.id,
-                        "session_switch",
-                        f"Session {session_account.id} 需要冷却，尝试切换账号"
-                    )
-
-                    # 获取下一个可用 session
-                    next_session = await session_manager.get_next_available_session(db)
-                    if not next_session:
-                        # 没有可用 session，暂停任务
-                        await update_transfer_task(db, task.id, status=TaskStatus.PAUSED)
-                        await create_task_log(
-                            db,
-                            task.id,
-                            "warning",
-                            "所有 Session 都在冷却中，任务已暂停"
-                        )
-                        return
-
-                    # 断开当前客户端
-                    await session_manager.disconnect_client(session_account.id)
-
-                    # 切换到新 session
-                    session_account = next_session
-                    client = await session_manager.get_client(db, session_account.id)
-                    await update_transfer_task(db, task.id, session_account_id=session_account.id)
-
-                    await create_task_log(
-                        db,
-                        task.id,
-                        "session_switch",
-                        f"已切换到 Session {session_account.id}"
-                    )
-
-                # 转发消息到 Bot
-                try:
-                    await client.forward_messages(
-                        entity=settings.BOT_USERNAME,
-                        messages=message.id,
-                        from_peer=channel
-                    )
-
-                    transferred_count += 1
-
-                    # 更新进度
-                    await update_transfer_task(
-                        db,
-                        task.id,
-                        progress_current=transferred_count
-                    )
-
-                    # 每转发 10 个文件记录一次日志
-                    if transferred_count % 10 == 0:
+                    # 应用过滤条件
+                    try:
+                        if not await self._apply_filters(message, task):
+                            continue
+                    except self.StopIterationSignal as e:
+                        # 收到停止信号，记录日志并终止遍历
+                        logger.info(f"捕获到 StopIterationSignal: {str(e)}")
                         await create_task_log(
                             db,
                             task.id,
                             "info",
-                            f"已转发 {transferred_count}/{total_messages} 个文件"
+                            f"已到达日期范围下限，提前终止遍历。已转发 {transferred_count} 个文件"
+                        )
+                        logger.info(f"任务 {task.id}: {str(e)}")
+                        break
+
+                    # 匹配成功，计数并更新总数
+                    matched_count += 1
+                    await update_transfer_task(db, task.id, progress_total=matched_count)
+
+                    # 检查 session 限流
+                    if await session_rate_limiter.check_and_update(db, session_account.id, task.id):
+                        # 需要冷却，切换 session
+                        await create_task_log(
+                            db,
+                            task.id,
+                            "session_switch",
+                            f"Session {session_account.id} 需要冷却，尝试切换账号"
                         )
 
-                except FloodWaitError as e:
-                    # API 限流
-                    await create_task_log(
-                        db,
-                        task.id,
-                        "rate_limit",
-                        f"遇到 API 限流，需要等待 {e.seconds} 秒"
-                    )
+                        # 获取下一个可用 session
+                        next_session = await session_manager.get_next_available_session(db)
+                        if not next_session:
+                            # 没有可用 session，暂停任务
+                            await update_transfer_task(db, task.id, status=TaskStatus.PAUSED)
+                            await create_task_log(
+                                db,
+                                task.id,
+                                "warning",
+                                "所有 Session 都在冷却中，任务已暂停"
+                            )
+                            return
 
-                    # 设置当前 session 冷却
-                    await session_manager.set_session_cooldown(
-                        db,
-                        session_account.id,
-                        cooldown_minutes=int(e.seconds / 60) + 1
-                    )
+                        # 断开当前客户端
+                        await session_manager.disconnect_client(session_account.id)
 
-                    # 切换 session
-                    next_session = await session_manager.get_next_available_session(db)
-                    if not next_session:
-                        await update_transfer_task(db, task.id, status=TaskStatus.PAUSED)
-                        return
+                        # 切换到新 session
+                        session_account = next_session
+                        client = await session_manager.get_client(db, session_account.id)
+                        await update_transfer_task(db, task.id, session_account_id=session_account.id)
 
-                    await session_manager.disconnect_client(session_account.id)
-                    session_account = next_session
-                    client = await session_manager.get_client(db, session_account.id)
-                    await update_transfer_task(db, task.id, session_account_id=session_account.id)
+                        await create_task_log(
+                            db,
+                            task.id,
+                            "session_switch",
+                            f"已切换到 Session {session_account.id}"
+                        )
 
-                except Exception as e:
-                    await create_task_log(
-                        db,
-                        task.id,
-                        "error",
-                        f"转发消息失败: {str(e)}"
-                    )
+                    # 转发消息到 Bot
+                    try:
+                        await client.forward_messages(
+                            entity=settings.BOT_USERNAME,
+                            messages=message.id,
+                            from_peer=channel
+                        )
+
+                        transferred_count += 1
+
+                        # 更新进度
+                        await update_transfer_task(
+                            db,
+                            task.id,
+                            progress_current=transferred_count
+                        )
+
+                        # 每转发 10 个文件记录一次日志
+                        if transferred_count % 10 == 0:
+                            await create_task_log(
+                                db,
+                                task.id,
+                                "info",
+                                f"已转发 {transferred_count}/{matched_count} 个文件"
+                            )
+
+                    except FloodWaitError as e:
+                        # API 限流
+                        await create_task_log(
+                            db,
+                            task.id,
+                            "rate_limit",
+                            f"遇到 API 限流，需要等待 {e.seconds} 秒"
+                        )
+
+                        # 设置当前 session 冷却
+                        await session_manager.set_session_cooldown(
+                            db,
+                            session_account.id,
+                            cooldown_minutes=int(e.seconds / 60) + 1
+                        )
+
+                        # 切换 session
+                        next_session = await session_manager.get_next_available_session(db)
+                        if not next_session:
+                            await update_transfer_task(db, task.id, status=TaskStatus.PAUSED)
+                            return
+
+                        await session_manager.disconnect_client(session_account.id)
+                        session_account = next_session
+                        client = await session_manager.get_client(db, session_account.id)
+                        await update_transfer_task(db, task.id, session_account_id=session_account.id)
+
+                    except Exception as e:
+                        await create_task_log(
+                            db,
+                            task.id,
+                            "error",
+                            f"转发消息失败: {str(e)}"
+                        )
+
+            except self.StopIterationSignal:
+                # 已在内层处理，这里只是为了捕获可能遗漏的信号
+                pass
 
         finally:
             # 断开客户端
             await session_manager.disconnect_client(session_account.id)
+
+    class StopIterationSignal(Exception):
+        """用于提前终止遍历的信号"""
+        pass
 
     async def _apply_filters(self, message, task) -> bool:
         """
@@ -320,6 +339,9 @@ class TransferExecutor:
 
         Returns:
             True 表示通过过滤，False 表示不通过
+
+        Raises:
+            StopIterationSignal: 当确定后续消息都不符合条件时，抛出此异常提前终止遍历
         """
         try:
             # 媒体类型过滤
@@ -332,49 +354,54 @@ class TransferExecutor:
             if filter_type == "all" and not (message.photo or message.video):
                 return False
 
-            # 关键词过滤
-            if task.filter_keywords:
-                logger.info(f"消息 {message.id} 开始关键词过滤，关键词: {task.filter_keywords}")
+            # 日期范围过滤 - 优先执行，减少后续处理
+            # 从最新消息开始遍历（reverse=False），先判断截止日期，再判断起始日期
+            if task.filter_date_from or task.filter_date_to:
+                message_datetime = getattr(message, 'date', None)
+                if message_datetime is None:
+                    # 没有日期信息，跳过
+                    return False
 
+                # Telegram 消息时间是 UTC（offset-aware），转换为 offset-naive 后再转北京时间
+                message_datetime_naive = message_datetime.replace(tzinfo=None)
+                beijing_time = message_datetime_naive + timedelta(hours=8)
+                message_date = beijing_time.date()
+
+                # 从最新消息开始遍历，先判断截止日期
+                if task.filter_date_to:
+                    filter_to_date = task.filter_date_to.date() if hasattr(task.filter_date_to, 'date') else task.filter_date_to
+                    if message_date > filter_to_date:
+                        # 消息日期晚于截止日期，跳过当前消息
+                        return False
+
+                # 再判断起始日期
+                if task.filter_date_from:
+                    filter_from_date = task.filter_date_from.date() if hasattr(task.filter_date_from, 'date') else task.filter_date_from
+                    if message_date < filter_from_date:
+                        # 消息日期早于起始日期，后续消息会更早，直接终止遍历
+                        logger.info(f"消息日期 {message_date} 早于起始日期 {filter_from_date}，准备终止遍历")
+                        raise self.StopIterationSignal("消息日期早于起始日期，终止遍历")
+
+            # 关键词过滤 - 在日期过滤之后执行
+            if task.filter_keywords:
                 # Telethon Message 对象的文本属性：
                 # - text: 纯文本消息的文本
                 # - message: 媒体消息的文本（相当于 Bot API 的 caption）
-                # 注意：不使用 caption 属性，因为 Telethon Message 对象没有这个属性
                 text = getattr(message, 'text', None) or getattr(message, 'message', None) or ""
 
-                logger.info(f"消息 {message.id} 文本内容: {text[:100] if text else '(无文本)'}")
+                # 如果消息没有文本，直接跳过
+                if not text:
+                    return False
 
-                # 如果消息有文本，检查关键词是否匹配
-                # 如果消息没有文本（纯媒体消息），直接通过（不过滤）
-                if text:
-                    # 检查关键词是否在文本中（模糊匹配）
-                    if not any(keyword in text for keyword in task.filter_keywords):
-                        logger.info(f"消息 {message.id} 不包含关键词，跳过")
-                        return False
-                    else:
-                        logger.info(f"消息 {message.id} 包含关键词，通过过滤")
-                else:
-                    logger.info(f"消息 {message.id} 无文本，直接通过")
-
-        # 日期范围过滤（只比较日期部分，不比较时间）
-        if task.filter_date_from:
-            # 将 message.date 转换为日期（忽略时间和时区）
-            message_date = message.date.date()
-            # 将 filter_date_from 转换为日期
-            filter_from_date = task.filter_date_from.date() if hasattr(task.filter_date_from, 'date') else task.filter_date_from
-            if message_date < filter_from_date:
-                return False
-
-        if task.filter_date_to:
-            # 将 message.date 转换为日期（忽略时间和时区）
-            message_date = message.date.date()
-            # 将 filter_date_to 转换为日期
-            filter_to_date = task.filter_date_to.date() if hasattr(task.filter_date_to, 'date') else task.filter_date_to
-            if message_date > filter_to_date:
-                return False
+                # 检查关键词是否在文本中（模糊匹配）
+                if not any(keyword in text for keyword in task.filter_keywords):
+                    return False
 
             return True
 
+        except self.StopIterationSignal:
+            # 重新抛出停止信号
+            raise
         except Exception as e:
             import traceback
             error_traceback = traceback.format_exc()
