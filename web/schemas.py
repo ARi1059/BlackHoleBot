@@ -236,6 +236,7 @@ class SettingsResponse(BaseModel):
     welcome_message: str
     bot_name: str
     max_media_per_collection: int
+    BOT_USERNAME: str
 
 
 class SettingsUpdateRequest(BaseModel):

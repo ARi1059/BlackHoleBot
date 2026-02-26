@@ -107,6 +107,7 @@ let collectionsCurrentLimit = 20;
 let collectionsCurrentSearch = '';
 let collectionsCurrentAccessFilter = '';
 let selectedCollections = new Set();
+let cachedBotUsername = null; // 缓存 BOT_USERNAME
 
 // 加载合集管理
 async function loadCollections() {
@@ -133,12 +134,13 @@ async function loadCollections() {
                         <th style="padding: 12px; text-align: left;">描述</th>
                         <th style="padding: 12px; text-align: left;">媒体数</th>
                         <th style="padding: 12px; text-align: left;">访问权限</th>
+                        <th style="padding: 12px; text-align: left;">深链接</th>
                         <th style="padding: 12px; text-align: left;">创建时间</th>
                         <th style="padding: 12px; text-align: left; width: 200px;">操作</th>
                     </tr>
                 </thead>
                 <tbody id="collectionsTable">
-                    <tr><td colspan="7" style="padding: 20px; text-align: center;">加载中...</td></tr>
+                    <tr><td colspan="8" style="padding: 20px; text-align: center;">加载中...</td></tr>
                 </tbody>
             </table>
             <div class="pagination" id="collectionsPagination" style="margin-top: 20px; text-align: center;"></div>
@@ -246,6 +248,17 @@ function setupCollectionsEventListeners() {
 // 加载合集数据
 async function loadCollectionsData() {
     try {
+        // 如果还没有缓存 BOT_USERNAME，先获取
+        if (!cachedBotUsername) {
+            try {
+                const settings = await apiRequest('/api/settings');
+                cachedBotUsername = settings.BOT_USERNAME || 'your_bot';
+            } catch (err) {
+                console.error('获取 BOT_USERNAME 失败:', err);
+                cachedBotUsername = 'your_bot';
+            }
+        }
+
         const params = new URLSearchParams({
             page: collectionsCurrentPage,
             limit: collectionsCurrentLimit
@@ -259,7 +272,7 @@ async function loadCollectionsData() {
         renderCollectionsPagination(data.total, data.page, data.limit);
     } catch (error) {
         console.error('加载合集失败:', error);
-        document.getElementById('collectionsTable').innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: red;">加载失败</td></tr>';
+        document.getElementById('collectionsTable').innerHTML = '<tr><td colspan="8" style="padding: 20px; text-align: center; color: red;">加载失败</td></tr>';
     }
 }
 
@@ -268,12 +281,16 @@ function renderCollectionsTable(collections) {
     const tbody = document.getElementById('collectionsTable');
 
     if (collections.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: #999;">暂无数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #999;">暂无数据</td></tr>';
         return;
     }
 
     tbody.innerHTML = collections.map(col => {
         const escapedName = col.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const escapedCode = col.deep_link_code.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const deepLink = `https://t.me/${cachedBotUsername}?start=${col.deep_link_code}`;
+        const escapedDeepLink = deepLink.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
         return `
         <tr style="border-bottom: 1px solid #e0e0e0;">
             <td style="padding: 12px;">
@@ -283,6 +300,12 @@ function renderCollectionsTable(collections) {
             <td style="padding: 12px;">${col.description || '-'}</td>
             <td style="padding: 12px;">${col.media_count}</td>
             <td style="padding: 12px;">${col.access_level === 'public' ? '公开' : 'VIP'}</td>
+            <td style="padding: 12px;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <a href="${deepLink}" target="_blank" style="font-size: 12px; color: #007bff; text-decoration: none; word-break: break-all;">${deepLink}</a>
+                    <button onclick="copyDeepLinkDirect('${escapedDeepLink}')" style="padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;" title="复制深链接">📋</button>
+                </div>
+            </td>
             <td style="padding: 12px;">${new Date(col.created_at).toLocaleString('zh-CN')}</td>
             <td style="padding: 12px;">
                 <button onclick="editCollection(${col.id})" style="padding: 4px 12px; margin-right: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">编辑</button>
@@ -1301,6 +1324,78 @@ function loadUsers() {
 
 function loadSettings() {
     document.getElementById('pageContent').innerHTML = '<h2>⚙️ 系统设置</h2><p>功能开发中...</p>';
+}
+
+// 复制深链接（简化版，直接复制传入的链接）
+function copyDeepLinkDirect(deepLink) {
+    // 使用兼容性更好的复制方法
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(deepLink).then(() => {
+            alert('深链接已复制到剪贴板');
+        }).catch(err => {
+            fallbackCopy(deepLink);
+        });
+    } else {
+        fallbackCopy(deepLink);
+    }
+}
+
+// 降级复制方法
+function fallbackCopy(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        textArea.remove();
+        alert('深链接已复制到剪贴板');
+    } catch (err) {
+        textArea.remove();
+        prompt('请手动复制以下深链接:', text);
+    }
+}
+
+// 复制深链接（旧版本，保留用于其他地方可能的调用）
+async function copyDeepLink(code) {
+    try {
+        const data = await apiRequest('/api/settings');
+        console.log('Settings API response:', data);
+        const botUsername = data.BOT_USERNAME || 'your_bot';
+        const deepLink = `https://t.me/${botUsername}?start=${code}`;
+
+        // 使用兼容性更好的复制方法
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(deepLink);
+            alert('深链接已复制到剪贴板:\n' + deepLink);
+        } else {
+            // 降级方案：使用传统的 execCommand 方法
+            const textArea = document.createElement('textarea');
+            textArea.value = deepLink;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                textArea.remove();
+                alert('深链接已复制到剪贴板:\n' + deepLink);
+            } catch (err) {
+                textArea.remove();
+                // 最后的降级方案：显示链接让用户手动复制
+                prompt('请手动复制以下深链接:', deepLink);
+            }
+        }
+    } catch (error) {
+        console.error('复制失败:', error);
+        alert('复制失败: ' + error.message);
+    }
 }
 
 // 页面路由

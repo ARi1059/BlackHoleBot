@@ -6,6 +6,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings as app_settings
 from database.connection import get_db
 from database.crud import (
     get_all_settings,
@@ -37,7 +38,8 @@ async def get_settings(
     return SettingsResponse(
         welcome_message=settings_dict.get("welcome_message", "欢迎使用 BlackHoleBot！"),
         bot_name=settings_dict.get("bot_name", "BlackHoleBot"),
-        max_media_per_collection=int(settings_dict.get("max_media_per_collection", "1000"))
+        max_media_per_collection=int(settings_dict.get("max_media_per_collection", "1000")),
+        BOT_USERNAME=app_settings.BOT_USERNAME
     )
 
 
