@@ -23,10 +23,16 @@ async def receive_transferred_media(message: Message, redis_client):
 
     当 Telethon 客户端转发文件到 Bot 时，Bot 接收并提取 file_id
     """
-    # 获取当前正在执行的任务 ID
-    task_id = task_queue.get_current_task_id()
+    print(f"[DEBUG] Bot 接收到转发消息: message_id={message.message_id}")
+
+    # 从 Redis 获取当前正在执行的任务 ID
+    task_id_str = await redis_client.get("current_transfer_task_id")
+    task_id = int(task_id_str) if task_id_str else None
+    print(f"[DEBUG] 当前任务 ID (from Redis): {task_id}")
+
     if not task_id:
         # 没有正在执行的任务，忽略
+        print(f"[DEBUG] 没有正在执行的任务，忽略此消息")
         return
 
     # 标记为 pending
@@ -44,6 +50,7 @@ async def receive_transferred_media(message: Message, redis_client):
                 "file_size": message.photo[-1].file_size,
                 "caption": getattr(message, 'caption', None)
             }
+            print(f"[DEBUG] 提取照片数据: {file_data['file_id']}")
         elif message.video:
             file_data = {
                 "file_id": message.video.file_id,
@@ -52,16 +59,20 @@ async def receive_transferred_media(message: Message, redis_client):
                 "file_size": message.video.file_size,
                 "caption": getattr(message, 'caption', None)
             }
+            print(f"[DEBUG] 提取视频数据: {file_data['file_id']}")
 
         if not file_data:
+            print(f"[DEBUG] 消息不包含照片或视频，跳过")
             return
 
         # 存入 Redis
         redis_key = f"task:{task_id}:files"
         await redis_client.rpush(redis_key, json.dumps(file_data))
+        print(f"[DEBUG] 已存储到 Redis: {redis_key}")
 
         # 设置过期时间（24 小时）
         await redis_client.expire(redis_key, 86400)
+        print(f"[DEBUG] 设置过期时间: 24 小时")
 
     except TelegramRetryAfter as e:
         # Bot API 限流

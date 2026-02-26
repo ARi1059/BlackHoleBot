@@ -47,7 +47,7 @@ logger.addHandler(file_handler)
 
 # 测试日志 - 模块加载时打印
 logger.info("=" * 80)
-logger.info("transfer_executor 模块已加载，日志系统已初始化 - VERSION 2.0")
+logger.info("transfer_executor 模块已加载，日志系统已初始化 - VERSION 3.3")
 logger.info("=" * 80)
 
 
@@ -83,6 +83,11 @@ class TransferExecutor:
                     status=TaskStatus.RUNNING,
                     started_at=datetime.now()
                 )
+
+                # 设置当前任务 ID 到 Redis，供 Bot 端使用
+                if self.redis_client:
+                    await self.redis_client.set("current_transfer_task_id", str(task_id))
+                    logger.info(f"已设置当前任务 ID 到 Redis: {task_id}")
 
                 await create_task_log(
                     db,
@@ -126,6 +131,11 @@ class TransferExecutor:
                     completed_at=datetime.now()
                 )
 
+                # 清除 Redis 中的任务 ID
+                if self.redis_client:
+                    await self.redis_client.delete("current_transfer_task_id")
+                    logger.info(f"已清除 Redis 中的任务 ID")
+
                 await create_task_log(
                     db,
                     task_id,
@@ -134,6 +144,11 @@ class TransferExecutor:
                 )
 
             except Exception as e:
+                # 清除 Redis 中的任务 ID
+                if self.redis_client:
+                    await self.redis_client.delete("current_transfer_task_id")
+                    logger.info(f"任务失败，已清除 Redis 中的任务 ID")
+
                 await update_transfer_task(
                     db,
                     task_id,
@@ -189,11 +204,14 @@ class TransferExecutor:
             logger.info(f"开始遍历频道消息")
 
             try:
+                message_count = 0  # 遍历的消息总数
                 async for message in client.iter_messages(
                     channel,
                     limit=None,
                     reverse=False
                 ):
+                    message_count += 1
+
                     # 检查 Bot 是否限流
                     while bot_rate_limiter.is_bot_limited():
                         await asyncio.sleep(1)
@@ -264,6 +282,7 @@ class TransferExecutor:
                             from_peer=channel
                         )
 
+                        # Bot 端会自动接收并存储 file_id 到 Redis
                         transferred_count += 1
 
                         # 更新进度
@@ -367,11 +386,14 @@ class TransferExecutor:
                 beijing_time = message_datetime_naive + timedelta(hours=8)
                 message_date = beijing_time.date()
 
+                logger.info(f"消息日期: {message_date}, 起始日期: {task.filter_date_from}, 截止日期: {task.filter_date_to}")
+
                 # 从最新消息开始遍历，先判断截止日期
                 if task.filter_date_to:
                     filter_to_date = task.filter_date_to.date() if hasattr(task.filter_date_to, 'date') else task.filter_date_to
                     if message_date > filter_to_date:
-                        # 消息日期晚于截止日期，跳过当前消息
+                        # 消息日期晚于截止日期，跳过当前消息，继续遍历
+                        logger.info(f"消息日期 {message_date} 晚于截止日期 {filter_to_date}，跳过")
                         return False
 
                 # 再判断起始日期
@@ -379,8 +401,11 @@ class TransferExecutor:
                     filter_from_date = task.filter_date_from.date() if hasattr(task.filter_date_from, 'date') else task.filter_date_from
                     if message_date < filter_from_date:
                         # 消息日期早于起始日期，后续消息会更早，直接终止遍历
-                        logger.info(f"消息日期 {message_date} 早于起始日期 {filter_from_date}，准备终止遍历")
+                        logger.info(f"消息日期 {message_date} 早于起始日期 {filter_from_date}，终止遍历")
                         raise self.StopIterationSignal("消息日期早于起始日期，终止遍历")
+
+                # 消息在日期范围内
+                logger.info(f"消息日期 {message_date} 在范围内，继续处理")
 
             # 关键词过滤 - 在日期过滤之后执行
             if task.filter_keywords:

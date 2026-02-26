@@ -97,7 +97,7 @@ function renderCollections(collections) {
     const tbody = document.getElementById('collectionsTable');
 
     if (collections.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
         return;
     }
 
@@ -116,6 +116,12 @@ function renderCollections(collections) {
                 <span class="badge badge-${collection.access_level === 'public' ? 'success' : 'warning'}">
                     ${collection.access_level === 'public' ? '公开' : 'VIP'}
                 </span>
+            </td>
+            <td>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <code style="font-size: 12px;">${collection.deep_link_code}</code>
+                    <button class="btn btn-sm" onclick="copyDeepLink('${collection.deep_link_code}')" title="复制深链接">📋</button>
+                </div>
             </td>
             <td>${formatDate(collection.created_at)}</td>
             <td>
@@ -329,6 +335,40 @@ async function batchDelete() {
     } catch (error) {
         console.error('批量删除失败:', error);
         showError('批量删除失败');
+    }
+}
+
+// 复制深链接
+async function copyDeepLink(code) {
+    // 需要从系统设置获取 bot username
+    try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE}/settings`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('获取设置失败');
+        }
+
+        const settings = await response.json();
+        const botUsername = settings.BOT_USERNAME || 'your_bot';
+        const deepLink = `https://t.me/${botUsername}?start=${code}`;
+
+        // 复制到剪贴板
+        await navigator.clipboard.writeText(deepLink);
+        showSuccess('深链接已复制到剪贴板');
+    } catch (error) {
+        console.error('复制失败:', error);
+        // 降级方案：只复制 code
+        try {
+            await navigator.clipboard.writeText(code);
+            showSuccess('深链接码已复制到剪贴板');
+        } catch (e) {
+            showError('复制失败');
+        }
     }
 }
 

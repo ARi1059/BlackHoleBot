@@ -14,10 +14,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 import uvicorn
+import redis.asyncio as redis
 
 from config import settings
 from web.api import auth, dashboard, collections, users, tasks, sessions, settings as settings_api
 from web.websocket import websocket_endpoint
+from utils.transfer_executor import transfer_executor
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -25,6 +27,26 @@ app = FastAPI(
     description="BlackHoleBot 管理后台 API",
     version="1.0.0"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时初始化"""
+    # 创建 Redis 客户端
+    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+    # 设置 Redis 客户端到 transfer_executor
+    transfer_executor.set_redis_client(redis_client)
+
+    print("Web 服务已启动，Redis 客户端已初始化")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时清理"""
+    if transfer_executor.redis_client:
+        await transfer_executor.redis_client.aclose()
+    print("Web 服务已关闭")
 
 # 挂载静态文件
 app.mount("/static", StaticFiles(directory="web/static"), name="static")

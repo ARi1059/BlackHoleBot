@@ -43,7 +43,13 @@ async function apiRequest(endpoint, options = {}) {
         return;
     }
 
-    return response.json();
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.detail || data.message || `HTTP ${response.status}`);
+    }
+
+    return data;
 }
 
 // 加载用户信息
