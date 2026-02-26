@@ -5,6 +5,8 @@
 
 import asyncio
 import json
+import logging
+import sys
 from typing import Optional, Dict, Any
 from datetime import datetime
 from telethon.errors import FloodWaitError, ChannelPrivateError, ChatAdminRequiredError
@@ -21,6 +23,32 @@ from database.models import TaskStatus
 from utils.session_manager import session_manager
 from utils.rate_limiter import session_rate_limiter, bot_rate_limiter
 from config import settings
+
+
+# 配置日志
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.propagate = True  # 确保日志传播到父 logger
+
+# 强制添加处理器
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+
+file_handler = logging.FileHandler('transfer_executor.log', encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(console_formatter)
+
+# 清除现有处理器，重新添加
+logger.handlers.clear()
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+
+# 测试日志 - 模块加载时打印
+logger.info("=" * 80)
+logger.info("transfer_executor 模块已加载，日志系统已初始化")
+logger.info("=" * 80)
 
 
 class TransferExecutor:
@@ -45,7 +73,7 @@ class TransferExecutor:
                 # 获取任务信息
                 task = await get_transfer_task(db, task_id)
                 if not task:
-                    print(f"Task {task_id} not found")
+                    logger.error(f"Task {task_id} not found")
                     return
 
                 # 更新任务状态为运行中
@@ -164,6 +192,8 @@ class TransferExecutor:
 
             # 遍历消息并转发
             transferred_count = 0
+            logger.info(f"开始遍历频道消息，总消息数: {total_messages}")
+
             async for message in client.iter_messages(
                 channel,
                 limit=None,
@@ -291,29 +321,57 @@ class TransferExecutor:
         Returns:
             True 表示通过过滤，False 表示不通过
         """
-        # 媒体类型过滤
-        filter_type = task.filter_type
-        if filter_type == "photo" and not message.photo:
-            return False
-        if filter_type == "video" and not message.video:
-            return False
-        if filter_type == "all" and not (message.photo or message.video):
-            return False
+        try:
+            # 媒体类型过滤
+            filter_type = task.filter_type
 
-        # 关键词过滤
-        if task.filter_keywords:
-            # 安全获取文本内容，使用 getattr 避免 AttributeError
-            text = getattr(message, 'text', None) or getattr(message, 'caption', None) or ""
-            if not any(keyword in text for keyword in task.filter_keywords):
+            if filter_type == "photo" and not message.photo:
+                return False
+            if filter_type == "video" and not message.video:
+                return False
+            if filter_type == "all" and not (message.photo or message.video):
                 return False
 
-        # 日期范围过滤
-        if task.filter_date_from and message.date < task.filter_date_from:
-            return False
-        if task.filter_date_to and message.date > task.filter_date_to:
-            return False
+            # 关键词过滤
+            if task.filter_keywords:
+                logger.info(f"消息 {message.id} 开始关键词过滤，关键词: {task.filter_keywords}")
 
-        return True
+                # Telethon Message 对象的文本属性：
+                # - text: 纯文本消息的文本
+                # - message: 媒体消息的文本（相当于 Bot API 的 caption）
+                # 注意：不使用 caption 属性，因为 Telethon Message 对象没有这个属性
+                text = getattr(message, 'text', None) or getattr(message, 'message', None) or ""
+
+                logger.info(f"消息 {message.id} 文本内容: {text[:100] if text else '(无文本)'}")
+
+                # 如果消息有文本，检查关键词是否匹配
+                # 如果消息没有文本（纯媒体消息），直接通过（不过滤）
+                if text:
+                    # 检查关键词是否在文本中（模糊匹配）
+                    if not any(keyword in text for keyword in task.filter_keywords):
+                        logger.info(f"消息 {message.id} 不包含关键词，跳过")
+                        return False
+                    else:
+                        logger.info(f"消息 {message.id} 包含关键词，通过过滤")
+                else:
+                    logger.info(f"消息 {message.id} 无文本，直接通过")
+
+            # 日期范围过滤
+            if task.filter_date_from and message.date < task.filter_date_from:
+                return False
+            if task.filter_date_to and message.date > task.filter_date_to:
+                return False
+
+            return True
+
+        except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"_apply_filters 异常!")
+            logger.error(f"异常类型: {type(e)}")
+            logger.error(f"异常消息: {str(e)}")
+            logger.error(f"Traceback:\n{error_traceback}")
+            raise  # 重新抛出异常
 
 
 # 全局执行器实例
