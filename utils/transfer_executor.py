@@ -131,11 +131,6 @@ class TransferExecutor:
                     completed_at=datetime.now()
                 )
 
-                # 清除 Redis 中的任务 ID
-                if self.redis_client:
-                    await self.redis_client.delete("current_transfer_task_id")
-                    logger.info(f"已清除 Redis 中的任务 ID")
-
                 await create_task_log(
                     db,
                     task_id,
@@ -143,12 +138,14 @@ class TransferExecutor:
                     f"✅ 任务完成，共转发 {task.progress_current} 个文件"
                 )
 
-            except Exception as e:
-                # 清除 Redis 中的任务 ID
+                # 延迟 10 分钟后清除 Redis 中的任务 ID，避免 Bot 接收延迟消息时找不到 task_id
+                logger.info(f"任务完成，将在 10 分钟后清除 Redis 中的任务 ID")
+                await asyncio.sleep(600)
                 if self.redis_client:
                     await self.redis_client.delete("current_transfer_task_id")
-                    logger.info(f"任务失败，已清除 Redis 中的任务 ID")
+                    logger.info(f"延迟删除 Redis 中的任务 ID")
 
+            except Exception as e:
                 await update_transfer_task(
                     db,
                     task_id,
@@ -161,6 +158,13 @@ class TransferExecutor:
                     "error",
                     f"任务执行失败: {str(e)}"
                 )
+
+                # 延迟 10 分钟后清除 Redis 中的任务 ID，避免 Bot 接收延迟消息时找不到 task_id
+                logger.info(f"任务失败，将在 10 分钟后清除 Redis 中的任务 ID")
+                await asyncio.sleep(600)
+                if self.redis_client:
+                    await self.redis_client.delete("current_transfer_task_id")
+                    logger.info(f"延迟删除 Redis 中的任务 ID")
             finally:
                 break
 
