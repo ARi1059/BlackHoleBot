@@ -66,15 +66,32 @@ if [ "$ADMIN_TELEGRAM_ID" = "YOUR_ADMIN_TELEGRAM_ID" ]; then
     exit 1
 fi
 
+echo -e "${YELLOW}请按照以下步骤获取 Token:${NC}"
+echo "1. 在 Telegram Bot 中发送 /login 命令"
+echo "2. Bot 会返回一个 6 位验证码"
+echo "3. 在下方输入验证码"
+echo ""
+read -p "请输入验证码: " LOGIN_CODE
+
+if [ -z "$LOGIN_CODE" ]; then
+    echo -e "${RED}错误: 验证码不能为空${NC}"
+    exit 1
+fi
+
 TOKEN_RESPONSE=$(curl -s -X POST "$API_BASE/api/auth/login" \
     -H "Content-Type: application/json" \
-    -d "{\"telegram_id\": $ADMIN_TELEGRAM_ID}")
+    -d "{\"telegram_id\": $ADMIN_TELEGRAM_ID, \"password\": \"$LOGIN_CODE\"}")
 
 TOKEN=$(echo $TOKEN_RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 
 if [ -z "$TOKEN" ]; then
-    echo -e "${RED}错误: 无法获取 Token，请检查管理员 Telegram ID${NC}"
+    echo -e "${RED}错误: 无法获取 Token${NC}"
     echo "响应: $TOKEN_RESPONSE"
+    echo ""
+    echo "可能的原因:"
+    echo "1. 验证码错误或已过期"
+    echo "2. 用户不是管理员"
+    echo "3. Web 服务未启动"
     exit 1
 fi
 

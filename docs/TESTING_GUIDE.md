@@ -45,11 +45,9 @@ psql -U blackholebot_user -h localhost -d blackholebot -f docs/test_data.sql
 ### 方法 1: 使用自动化测试脚本
 
 ```bash
-# 1. 编辑脚本，设置你的管理员 Telegram ID
-nano docs/quick_test.sh
-# 修改: ADMIN_TELEGRAM_ID="YOUR_ADMIN_TELEGRAM_ID"
+# 1. 在 Telegram Bot 中发送 /login 命令获取验证码
 
-# 2. 运行测试
+# 2. 运行测试脚本（会提示输入验证码）
 bash docs/quick_test.sh
 ```
 
@@ -67,11 +65,17 @@ bash docs/quick_test.sh
 
 #### 步骤 1: 获取管理员 Token
 
+**重要**: 登录需要验证码，请先在 Telegram Bot 中获取
+
 ```bash
-# 替换 YOUR_ADMIN_TELEGRAM_ID 为你的 Telegram ID
+# 1. 在 Telegram Bot 中发送 /login 命令
+# 2. Bot 会返回一个 6 位验证码
+# 3. 使用验证码登录
+
+# 替换 YOUR_ADMIN_TELEGRAM_ID 和 YOUR_CODE
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"telegram_id": YOUR_ADMIN_TELEGRAM_ID}' \
+  -d '{"telegram_id": YOUR_ADMIN_TELEGRAM_ID, "password": "YOUR_CODE"}' \
   | jq -r '.access_token'
 
 # 保存返回的 token
