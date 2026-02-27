@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from aiogram import Bot
 from aiogram.types import InputMediaPhoto, InputMediaVideo
 from config import settings
@@ -12,22 +12,28 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
-async def send_collection_to_channel(bot: Bot, media_list: List[Dict[str, Any]], collection_name: str):
+async def send_collection_to_channel(bot: Optional[Bot], media_list: List[Dict[str, Any]], collection_name: str):
     """
     将合集内容发送到私有频道
 
     Args:
-        bot: Bot 实例
-        media_list: 媒体文件列表，每个元素包含 file_id, file_type 等信息
+        bot: Bot 实例（可选，为 None 时自动创建临时实例）
+        media_list: 媒体文件列表
         collection_name: 合集名称
     """
     if not settings.PRIVATE_CHANNEL:
         logger.warning("PRIVATE_CHANNEL 未配置，跳过发送到频道")
         return
 
+    bot_instance = bot
+    should_close = False
+    if bot_instance is None:
+        bot_instance = Bot(token=settings.BOT_TOKEN)
+        should_close = True
+
     try:
         # 发送合集标题
-        await bot.send_message(
+        await bot_instance.send_message(
             chat_id=settings.PRIVATE_CHANNEL,
             text=f"📦 合集: {collection_name}\n📊 共 {len(media_list)} 个文件"
         )
@@ -40,15 +46,14 @@ async def send_collection_to_channel(bot: Bot, media_list: List[Dict[str, Any]],
             for media_data in batch:
                 file_id = media_data["file_id"]
                 file_type = media_data["file_type"]
-                caption = media_data.get("caption", "")
 
                 if file_type == "photo":
-                    media_group.append(InputMediaPhoto(media=file_id, caption=caption))
+                    media_group.append(InputMediaPhoto(media=file_id))
                 elif file_type == "video":
-                    media_group.append(InputMediaVideo(media=file_id, caption=caption))
+                    media_group.append(InputMediaVideo(media=file_id))
 
             if media_group:
-                await bot.send_media_group(
+                await bot_instance.send_media_group(
                     chat_id=settings.PRIVATE_CHANNEL,
                     media=media_group
                 )
@@ -57,3 +62,6 @@ async def send_collection_to_channel(bot: Bot, media_list: List[Dict[str, Any]],
 
     except Exception as e:
         logger.error(f"发送合集到私有频道失败: {e}", exc_info=True)
+    finally:
+        if should_close:
+            await bot_instance.session.close()

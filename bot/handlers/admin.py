@@ -26,6 +26,9 @@ from config import settings
 
 router = Router()
 
+# 用于保护媒体上传并发写入的锁（按用户隔离）
+_upload_locks: dict[int, asyncio.Lock] = {}
+
 
 # 权限检查装饰器
 def require_admin(func):
@@ -67,37 +70,42 @@ async def cmd_upload(message: Message, user: User, state: FSMContext):
 @router.message(UploadStates.waiting_for_media, F.photo | F.video)
 async def handle_media_upload(message: Message, state: FSMContext):
     """接收媒体文件"""
-    data = await state.get_data()
-    media_list = data.get("media_list", [])
+    user_id = message.from_user.id
+    if user_id not in _upload_locks:
+        _upload_locks[user_id] = asyncio.Lock()
 
-    # 提取文件信息
-    if message.photo:
-        file_id = message.photo[-1].file_id
-        file_unique_id = message.photo[-1].file_unique_id
-        file_type = "photo"
-        file_size = message.photo[-1].file_size
-    elif message.video:
-        file_id = message.video.file_id
-        file_unique_id = message.video.file_unique_id
-        file_type = "video"
-        file_size = message.video.file_size
-    else:
-        return
+    async with _upload_locks[user_id]:
+        data = await state.get_data()
+        media_list = data.get("media_list", [])
 
-    # 检查是否重复
-    if any(m["file_unique_id"] == file_unique_id for m in media_list):
-        return
+        # 提取文件信息
+        if message.photo:
+            file_id = message.photo[-1].file_id
+            file_unique_id = message.photo[-1].file_unique_id
+            file_type = "photo"
+            file_size = message.photo[-1].file_size
+        elif message.video:
+            file_id = message.video.file_id
+            file_unique_id = message.video.file_unique_id
+            file_type = "video"
+            file_size = message.video.file_size
+        else:
+            return
 
-    # 添加到列表
-    media_list.append({
-        "file_id": file_id,
-        "file_unique_id": file_unique_id,
-        "file_type": file_type,
-        "file_size": file_size,
-        "caption": getattr(message, 'caption', None)
-    })
+        # 检查是否重复
+        if any(m["file_unique_id"] == file_unique_id for m in media_list):
+            return
 
-    await state.update_data(media_list=media_list)
+        # 添加到列表
+        media_list.append({
+            "file_id": file_id,
+            "file_unique_id": file_unique_id,
+            "file_type": file_type,
+            "file_size": file_size,
+            "caption": getattr(message, 'caption', None)
+        })
+
+        await state.update_data(media_list=media_list)
 
 
 @router.message(UploadStates.waiting_for_media, Command("done"))
@@ -361,41 +369,46 @@ async def handle_add_media_upload(message: Message, state: FSMContext):
     import logging
     logger = logging.getLogger(__name__)
 
-    data = await state.get_data()
-    media_list = data.get("media_list", [])
+    user_id = message.from_user.id
+    if user_id not in _upload_locks:
+        _upload_locks[user_id] = asyncio.Lock()
 
-    logger.info(f"Receiving media in AddMediaStates, current list size: {len(media_list)}")
+    async with _upload_locks[user_id]:
+        data = await state.get_data()
+        media_list = data.get("media_list", [])
 
-    # 提取文件信息
-    if message.photo:
-        file_id = message.photo[-1].file_id
-        file_unique_id = message.photo[-1].file_unique_id
-        file_type = "photo"
-        file_size = message.photo[-1].file_size
-    elif message.video:
-        file_id = message.video.file_id
-        file_unique_id = message.video.file_unique_id
-        file_type = "video"
-        file_size = message.video.file_size
-    else:
-        return
+        logger.info(f"Receiving media in AddMediaStates, current list size: {len(media_list)}")
 
-    # 检查是否重复
-    if any(m["file_unique_id"] == file_unique_id for m in media_list):
-        logger.info(f"Duplicate media detected: {file_unique_id}")
-        return
+        # 提取文件信息
+        if message.photo:
+            file_id = message.photo[-1].file_id
+            file_unique_id = message.photo[-1].file_unique_id
+            file_type = "photo"
+            file_size = message.photo[-1].file_size
+        elif message.video:
+            file_id = message.video.file_id
+            file_unique_id = message.video.file_unique_id
+            file_type = "video"
+            file_size = message.video.file_size
+        else:
+            return
 
-    # 添加到列表
-    media_list.append({
-        "file_id": file_id,
-        "file_unique_id": file_unique_id,
-        "file_type": file_type,
-        "file_size": file_size,
-        "caption": getattr(message, 'caption', None)
-    })
+        # 检查是否重复
+        if any(m["file_unique_id"] == file_unique_id for m in media_list):
+            logger.info(f"Duplicate media detected: {file_unique_id}")
+            return
 
-    await state.update_data(media_list=media_list)
-    logger.info(f"Media added, new list size: {len(media_list)}")
+        # 添加到列表
+        media_list.append({
+            "file_id": file_id,
+            "file_unique_id": file_unique_id,
+            "file_type": file_type,
+            "file_size": file_size,
+            "caption": getattr(message, 'caption', None)
+        })
+
+        await state.update_data(media_list=media_list)
+        logger.info(f"Media added, new list size: {len(media_list)}")
 
 
 @router.message(AddMediaStates.waiting_for_media, Command("done"))

@@ -30,6 +30,7 @@ from web.schemas import (
 from web.dependencies import require_admin
 from utils.task_queue import task_queue
 from utils.deep_link import generate_unique_deep_link_code
+from utils.channel_sender import send_collection_to_channel
 import redis.asyncio as redis
 from config import settings
 
@@ -253,6 +254,9 @@ async def approve_task(
 
     # 更新合集媒体数量
     await update_collection(db, collection.id, media_count=len(media_list))
+
+    # 发送到私有频道
+    await send_collection_to_channel(None, media_list, collection.name)
 
     # 清空 Redis
     await redis_client.delete(redis_key)
