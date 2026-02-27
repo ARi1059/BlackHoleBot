@@ -52,11 +52,10 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    async for session in get_db():
-        user = await get_user(session, user_id)
-        if user is None:
-            raise credentials_exception
-        return user
+    user = await get_user(db, user_id)
+    if user is None:
+        raise credentials_exception
+    return user
 
 
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
