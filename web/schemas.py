@@ -174,6 +174,28 @@ class BanUserRequest(BaseModel):
     is_banned: bool
 
 
+class BatchVIPRequest(BaseModel):
+    """批量设置VIP请求"""
+    telegram_ids: List[int]
+    action: str  # "grant" 或 "revoke"
+
+
+class BatchVIPResponse(BaseModel):
+    """批量设置VIP响应"""
+    success: bool
+    message: str
+    details: dict
+
+
+class UserStatisticsResponse(BaseModel):
+    """用户统计分析响应"""
+    role_distribution: dict
+    active_users: dict
+    growth_trend: dict
+    total_users: int
+    banned_users: int
+
+
 # ==================== 搬运任务相关 ====================
 
 class TaskCreate(BaseModel):

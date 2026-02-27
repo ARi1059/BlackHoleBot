@@ -6,6 +6,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
+import logging
 
 from database.connection import get_db
 from database.crud import (
@@ -16,7 +17,9 @@ from database.crud import (
     get_admin_users,
     update_user_role,
     ban_user,
-    create_admin_log
+    create_admin_log,
+    batch_update_vip,
+    get_user_statistics_data
 )
 from database.models import UserRole
 from web.schemas import (
@@ -26,11 +29,38 @@ from web.schemas import (
     UserStatistics,
     UpdateRoleRequest,
     BanUserRequest,
-    SuccessResponse
+    SuccessResponse,
+    BatchVIPRequest,
+    BatchVIPResponse,
+    UserStatisticsResponse
 )
 from web.dependencies import require_admin, require_super_admin
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+async def send_role_change_notification(telegram_id: int, new_role: str):
+    """发送角色变更通知"""
+    try:
+        from config import settings
+        from aiogram import Bot
+
+        role_names = {
+            "USER": "普通用户",
+            "VIP": "VIP用户",
+            "ADMIN": "管理员",
+            "SUPER_ADMIN": "超级管理员"
+        }
+
+        bot = Bot(token=settings.BOT_TOKEN)
+        try:
+            message = f"🎉 您的角色已更新为：{role_names.get(new_role, new_role)}\n\n现在您可以享受更多权限了！"
+            await bot.send_message(telegram_id, message)
+        finally:
+            await bot.session.close()
+    except Exception as e:
+        logger.error(f"发送角色变更通知失败: {e}")
 
 
 @router.get("", response_model=UserListResponse)
@@ -121,6 +151,9 @@ async def update_user_role_endpoint(
     success = await update_user_role(db, user_id, new_role)
     if not success:
         raise HTTPException(status_code=500, detail="更新失败")
+
+    # 发送通知
+    await send_role_change_notification(user.telegram_id, new_role.value)
 
     # 记录日志
     await create_admin_log(
@@ -266,3 +299,70 @@ async def list_admins(
         page=page,
         limit=limit
     )
+
+
+@router.post("/batch-vip", response_model=BatchVIPResponse)
+async def batch_set_vip(
+    request: BatchVIPRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_super_admin)
+):
+    """
+    批量设置/撤销VIP
+
+    需要超级管理员权限
+    """
+    if request.action not in ["grant", "revoke"]:
+        raise HTTPException(status_code=400, detail="action 必须是 'grant' 或 'revoke'")
+
+    if not request.telegram_ids:
+        raise HTTPException(status_code=400, detail="telegram_ids 不能为空")
+
+    grant = request.action == "grant"
+    success_count, failed_count, failed_ids = await batch_update_vip(
+        db, request.telegram_ids, grant
+    )
+
+    # 记录操作日志
+    await create_admin_log(
+        db,
+        user_id=current_user.id,
+        action=f"batch_vip_{request.action}",
+        details={
+            "telegram_ids": request.telegram_ids,
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "failed_ids": failed_ids
+        }
+    )
+
+    action_text = "设置为VIP" if grant else "撤销VIP"
+    message = f"已{action_text} {success_count} 个用户"
+    if failed_count > 0:
+        message += f"，{failed_count} 个用户不存在"
+
+    return BatchVIPResponse(
+        success=True,
+        message=message,
+        details={
+            "total": len(request.telegram_ids),
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "failed_ids": failed_ids
+        }
+    )
+
+
+@router.get("/statistics", response_model=UserStatisticsResponse)
+async def get_user_statistics(
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    """
+    获取用户统计分析数据
+
+    需要管理员权限
+    """
+    stats = await get_user_statistics_data(db)
+    return UserStatisticsResponse(**stats)
+

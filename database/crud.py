@@ -176,6 +176,120 @@ async def get_admin_users(
     return admins, total
 
 
+async def batch_update_vip(
+    db: AsyncSession,
+    telegram_ids: List[int],
+    grant: bool
+) -> tuple[int, int, List[int]]:
+    """
+    批量设置/撤销VIP
+
+    返回: (成功数量, 失败数量, 失败的telegram_ids)
+    """
+    from database.models import UserRole
+
+    # 查询所有存在的用户
+    result = await db.execute(
+        select(User).where(User.telegram_id.in_(telegram_ids))
+    )
+    users = result.scalars().all()
+
+    existing_ids = {user.telegram_id for user in users}
+    failed_ids = [tid for tid in telegram_ids if tid not in existing_ids]
+
+    # 批量更新
+    target_role = UserRole.VIP if grant else UserRole.USER
+
+    for user in users:
+        # 不修改管理员角色
+        if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            user.role = target_role
+
+    await db.commit()
+
+    success_count = len(users)
+    failed_count = len(failed_ids)
+
+    return success_count, failed_count, failed_ids
+
+
+async def get_user_statistics_data(db: AsyncSession) -> dict:
+    """获取用户统计数据"""
+    from database.models import UserRole
+    from datetime import datetime, timedelta
+
+    # 角色分布
+    role_dist_result = await db.execute(
+        select(User.role, func.count(User.id))
+        .group_by(User.role)
+    )
+    role_distribution = {role.value: count for role, count in role_dist_result.all()}
+
+    # 总用户数
+    total_users = await db.scalar(select(func.count(User.id)))
+
+    # 封禁用户数
+    banned_users = await db.scalar(
+        select(func.count(User.id)).where(User.is_banned == True)
+    )
+
+    # 活跃用户统计
+    now = datetime.now()
+    daily_active = await db.scalar(
+        select(func.count(User.id))
+        .where(User.last_active_at >= now - timedelta(days=1))
+    )
+    weekly_active = await db.scalar(
+        select(func.count(User.id))
+        .where(User.last_active_at >= now - timedelta(days=7))
+    )
+    monthly_active = await db.scalar(
+        select(func.count(User.id))
+        .where(User.last_active_at >= now - timedelta(days=30))
+    )
+
+    # 增长趋势 - 最近7天
+    growth_7d = []
+    for i in range(6, -1, -1):
+        date = (now - timedelta(days=i)).date()
+        count = await db.scalar(
+            select(func.count(User.id))
+            .where(func.date(User.created_at) == date)
+        )
+        growth_7d.append({
+            "date": date.isoformat(),
+            "new_users": count or 0
+        })
+
+    # 增长趋势 - 最近30天
+    growth_30d = []
+    for i in range(29, -1, -1):
+        date = (now - timedelta(days=i)).date()
+        count = await db.scalar(
+            select(func.count(User.id))
+            .where(func.date(User.created_at) == date)
+        )
+        growth_30d.append({
+            "date": date.isoformat(),
+            "new_users": count or 0
+        })
+
+    return {
+        "role_distribution": role_distribution,
+        "active_users": {
+            "daily": daily_active or 0,
+            "weekly": weekly_active or 0,
+            "monthly": monthly_active or 0
+        },
+        "growth_trend": {
+            "last_7_days": growth_7d,
+            "last_30_days": growth_30d
+        },
+        "total_users": total_users or 0,
+        "banned_users": banned_users or 0
+    }
+
+
 # ==================== Collection CRUD ====================
 
 async def get_collection(db: AsyncSession, collection_id: int) -> Optional[Collection]:

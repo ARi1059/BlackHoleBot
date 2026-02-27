@@ -1588,6 +1588,201 @@ async function updateUserRole(event, userId) {
     }
 }
 
+// 批量VIP管理页面
+async function loadBatchVIP() {
+    const html = `
+        <div class="page-header">
+            <h2>💎 批量VIP管理</h2>
+        </div>
+
+        <div class="batch-vip-container">
+            <div class="form-section">
+                <h3>批量设置VIP</h3>
+                <p style="color: #666; margin-bottom: 15px;">请输入Telegram ID，每行一个</p>
+                <textarea id="batchVipIds" rows="10" placeholder="123456789&#10;987654321&#10;111222333" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-family: monospace;"></textarea>
+
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button onclick="executeBatchVIP('grant')" style="flex: 1; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                        ✅ 授予VIP
+                    </button>
+                    <button onclick="executeBatchVIP('revoke')" style="flex: 1; padding: 12px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                        ❌ 撤销VIP
+                    </button>
+                </div>
+            </div>
+
+            <div id="batchVipResult" style="margin-top: 30px;"></div>
+        </div>
+    `;
+
+    document.getElementById('pageContent').innerHTML = html;
+}
+
+async function executeBatchVIP(action) {
+    const idsText = document.getElementById('batchVipIds').value.trim();
+
+    if (!idsText) {
+        alert('请输入Telegram ID');
+        return;
+    }
+
+    // 解析ID列表
+    const telegram_ids = idsText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && /^\d+$/.test(line))
+        .map(id => parseInt(id));
+
+    if (telegram_ids.length === 0) {
+        alert('没有有效的Telegram ID');
+        return;
+    }
+
+    if (!confirm(`确定要${action === 'grant' ? '授予' : '撤销'} ${telegram_ids.length} 个用户的VIP权限吗？`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/users/batch-vip', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                telegram_ids: telegram_ids,
+                action: action
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '操作失败');
+        }
+
+        const data = await response.json();
+
+        // 显示结果
+        let resultHtml = `
+            <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; border-left: 4px solid #4caf50;">
+                <h3 style="color: #2e7d32; margin-bottom: 10px;">✅ ${data.message}</h3>
+                <div style="color: #666;">
+                    <p>总数: ${data.details.total}</p>
+                    <p>成功: ${data.details.success_count}</p>
+                    <p>失败: ${data.details.failed_count}</p>
+                    ${data.details.failed_ids.length > 0 ? `
+                        <p style="margin-top: 10px;">失败的ID: ${data.details.failed_ids.join(', ')}</p>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+
+        document.getElementById('batchVipResult').innerHTML = resultHtml;
+
+        // 清空输入框
+        document.getElementById('batchVipIds').value = '';
+
+    } catch (error) {
+        console.error('批量VIP操作失败:', error);
+        document.getElementById('batchVipResult').innerHTML = `
+            <div style="background: #ffebee; padding: 20px; border-radius: 8px; border-left: 4px solid #f44336;">
+                <h3 style="color: #c62828; margin-bottom: 10px;">❌ 操作失败</h3>
+                <p style="color: #666;">${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+// 用户统计页面
+async function loadUserStats() {
+    document.getElementById('pageContent').innerHTML = '<h2>📊 用户统计</h2><p>加载中...</p>';
+
+    try {
+        const response = await fetch('/api/users/statistics', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) throw new Error('获取统计数据失败');
+
+        const data = await response.json();
+
+        const html = `
+            <div class="page-header">
+                <h2>📊 用户统计分析</h2>
+            </div>
+
+            <!-- 概览卡片 -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <h3 style="font-size: 14px; margin-bottom: 10px;">总用户数</h3>
+                    <p style="font-size: 32px; font-weight: bold;">${data.total_users}</p>
+                </div>
+                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <h3 style="font-size: 14px; margin-bottom: 10px;">日活跃用户</h3>
+                    <p style="font-size: 32px; font-weight: bold;">${data.active_users.daily}</p>
+                </div>
+                <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <h3 style="font-size: 14px; margin-bottom: 10px;">周活跃用户</h3>
+                    <p style="font-size: 32px; font-weight: bold;">${data.active_users.weekly}</p>
+                </div>
+                <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <h3 style="font-size: 14px; margin-bottom: 10px;">月活跃用户</h3>
+                    <p style="font-size: 32px; font-weight: bold;">${data.active_users.monthly}</p>
+                </div>
+            </div>
+
+            <!-- 角色分布 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin-bottom: 15px;">角色分布</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    ${Object.entries(data.role_distribution).map(([role, count]) => `
+                        <div style="text-align: center; padding: 15px; background: #f5f5f5; border-radius: 6px;">
+                            <div style="font-size: 24px; font-weight: bold; color: #667eea;">${count}</div>
+                            <div style="color: #666; margin-top: 5px;">${getRoleDisplayName(role.toUpperCase())}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            <!-- 增长趋势 - 最近7天 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin-bottom: 15px;">用户增长趋势（最近7天）</h3>
+                <table style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left; padding: 10px; background: #f5f5f5;">日期</th>
+                            <th style="text-align: right; padding: 10px; background: #f5f5f5;">新增用户</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.growth_trend.last_7_days.map(item => `
+                            <tr>
+                                <td style="padding: 10px; border-bottom: 1px solid #e0e0e0;">${item.date}</td>
+                                <td style="padding: 10px; border-bottom: 1px solid #e0e0e0; text-align: right; font-weight: bold; color: #667eea;">${item.new_users}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 其他统计 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin-bottom: 15px;">其他统计</h3>
+                <p style="color: #666; margin-bottom: 10px;">封禁用户数: <strong style="color: #f44336;">${data.banned_users}</strong></p>
+                <p style="color: #666;">活跃率（日/总）: <strong style="color: #667eea;">${((data.active_users.daily / data.total_users) * 100).toFixed(2)}%</strong></p>
+            </div>
+        `;
+
+        document.getElementById('pageContent').innerHTML = html;
+
+    } catch (error) {
+        console.error('加载统计数据失败:', error);
+        document.getElementById('pageContent').innerHTML = '<h2>📊 用户统计</h2><p style="color: red;">加载失败，请重试</p>';
+    }
+}
+
 function loadSettings() {
     document.getElementById('pageContent').innerHTML = '<h2>⚙️ 系统设置</h2><p>功能开发中...</p>';
 }
@@ -1671,6 +1866,8 @@ const routes = {
     'tasks': loadTasks,
     'sessions': loadSessions,
     'users': loadUsers,
+    'user-stats': loadUserStats,
+    'batch-vip': loadBatchVIP,
     'settings': loadSettings
 };
 
