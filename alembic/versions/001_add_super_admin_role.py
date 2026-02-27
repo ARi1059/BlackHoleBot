@@ -18,7 +18,19 @@ depends_on = None
 
 def upgrade() -> None:
     # 添加 super_admin 到 userrole 枚举类型
-    op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'super_admin'")
+    # 先检查值是否已存在，避免权限问题
+    from sqlalchemy import text
+
+    connection = op.get_bind()
+    result = connection.execute(text(
+        "SELECT EXISTS (SELECT 1 FROM pg_enum e "
+        "JOIN pg_type t ON e.enumtypid = t.oid "
+        "WHERE t.typname = 'userrole' AND e.enumlabel = 'super_admin')"
+    ))
+    exists = result.scalar()
+
+    if not exists:
+        op.execute("ALTER TYPE userrole ADD VALUE 'super_admin'")
 
 
 def downgrade() -> None:
