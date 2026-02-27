@@ -1318,8 +1318,311 @@ async function deleteTask(taskId, taskName) {
     }
 }
 
-function loadUsers() {
-    document.getElementById('pageContent').innerHTML = '<h2>👥 用户管理</h2><p>功能开发中...</p>';
+// 用户管理相关变量
+let currentUsersPage = 1;
+let usersSearchText = '';
+let usersRoleFilter = '';
+
+async function loadUsers(page = 1) {
+    currentUsersPage = page;
+
+    try {
+        const params = new URLSearchParams({
+            page: page,
+            limit: 20
+        });
+
+        if (usersSearchText) {
+            params.append('search', usersSearchText);
+        }
+
+        if (usersRoleFilter) {
+            params.append('role', usersRoleFilter);
+        }
+
+        const response = await fetch(`/api/users?${params}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) throw new Error('获取用户列表失败');
+
+        const data = await response.json();
+        renderUsersPage(data);
+    } catch (error) {
+        console.error('加载用户列表失败:', error);
+        document.getElementById('pageContent').innerHTML = '<h2>👥 用户管理</h2><p>加载失败，请重试</p>';
+    }
+}
+
+function renderUsersPage(data) {
+    const totalPages = Math.ceil(data.total / 20);
+
+    const html = `
+        <div class="page-header">
+            <h2>👥 用户管理</h2>
+            <div class="header-actions">
+                <span class="total-count">共 ${data.total} 个用户</span>
+            </div>
+        </div>
+
+        <div class="filters">
+            <input type="text" id="usersSearch" placeholder="搜索用户名..." value="${usersSearchText}">
+            <select id="usersRoleFilter">
+                <option value="">所有角色</option>
+                <option value="USER" ${usersRoleFilter === 'USER' ? 'selected' : ''}>普通用户</option>
+                <option value="VIP" ${usersRoleFilter === 'VIP' ? 'selected' : ''}>VIP</option>
+                <option value="ADMIN" ${usersRoleFilter === 'ADMIN' ? 'selected' : ''}>管理员</option>
+                <option value="SUPER_ADMIN" ${usersRoleFilter === 'SUPER_ADMIN' ? 'selected' : ''}>超级管理员</option>
+            </select>
+            <button onclick="applyUsersFilters()">搜索</button>
+            <button onclick="resetUsersFilters()">重置</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Telegram ID</th>
+                    <th>用户名</th>
+                    <th>姓名</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>最后活跃</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${data.users.map(user => `
+                    <tr>
+                        <td>${user.telegram_id}</td>
+                        <td>${user.username || '-'}</td>
+                        <td>${user.first_name || ''} ${user.last_name || ''}</td>
+                        <td><span class="role-badge role-${user.role.toLowerCase()}">${getRoleDisplayName(user.role)}</span></td>
+                        <td><span class="status-badge ${user.is_banned ? 'status-banned' : 'status-active'}">${user.is_banned ? '已封禁' : '正常'}</span></td>
+                        <td>${formatDateTime(user.last_active_at)}</td>
+                        <td>
+                            <button class="btn-small" onclick="viewUserDetail(${user.id})">详情</button>
+                            ${user.role !== 'SUPER_ADMIN' ? `
+                                <button class="btn-small" onclick="showEditRoleModal(${user.id}, '${user.role}')">修改角色</button>
+                                ${user.is_banned ?
+                                    `<button class="btn-small btn-success" onclick="unbanUser(${user.id})">解封</button>` :
+                                    `<button class="btn-small btn-danger" onclick="banUser(${user.id})">封禁</button>`
+                                }
+                            ` : ''}
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+
+        ${totalPages > 1 ? `
+            <div class="pagination">
+                <button onclick="loadUsers(${currentUsersPage - 1})" ${currentUsersPage === 1 ? 'disabled' : ''}>上一页</button>
+                <span>第 ${currentUsersPage} / ${totalPages} 页</span>
+                <button onclick="loadUsers(${currentUsersPage + 1})" ${currentUsersPage === totalPages ? 'disabled' : ''}>下一页</button>
+            </div>
+        ` : ''}
+
+        <!-- 用户详情模态框 -->
+        <div id="userDetailModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeUserDetailModal()">&times;</span>
+                <h3>用户详情</h3>
+                <div id="userDetailContent"></div>
+            </div>
+        </div>
+
+        <!-- 修改角色模态框 -->
+        <div id="editRoleModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeEditRoleModal()">&times;</span>
+                <h3>修改用户角色</h3>
+                <div id="editRoleContent"></div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('pageContent').innerHTML = html;
+}
+
+function getRoleDisplayName(role) {
+    const roleNames = {
+        'USER': '普通用户',
+        'VIP': 'VIP',
+        'ADMIN': '管理员',
+        'SUPER_ADMIN': '超级管理员'
+    };
+    return roleNames[role] || role;
+}
+
+function applyUsersFilters() {
+    usersSearchText = document.getElementById('usersSearch').value.trim();
+    usersRoleFilter = document.getElementById('usersRoleFilter').value;
+    loadUsers(1);
+}
+
+function resetUsersFilters() {
+    usersSearchText = '';
+    usersRoleFilter = '';
+    document.getElementById('usersSearch').value = '';
+    document.getElementById('usersRoleFilter').value = '';
+    loadUsers(1);
+}
+
+async function viewUserDetail(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) throw new Error('获取用户详情失败');
+
+        const data = await response.json();
+
+        const html = `
+            <div class="user-detail">
+                <div class="detail-section">
+                    <h4>基本信息</h4>
+                    <p><strong>Telegram ID:</strong> ${data.telegram_id}</p>
+                    <p><strong>用户名:</strong> ${data.username || '-'}</p>
+                    <p><strong>姓名:</strong> ${data.first_name || ''} ${data.last_name || ''}</p>
+                    <p><strong>角色:</strong> <span class="role-badge role-${data.role.toLowerCase()}">${getRoleDisplayName(data.role)}</span></p>
+                    <p><strong>状态:</strong> <span class="status-badge ${data.is_banned ? 'status-banned' : 'status-active'}">${data.is_banned ? '已封禁' : '正常'}</span></p>
+                    <p><strong>注册时间:</strong> ${formatDateTime(data.created_at)}</p>
+                    <p><strong>最后活跃:</strong> ${formatDateTime(data.last_active_at)}</p>
+                </div>
+
+                <div class="detail-section">
+                    <h4>使用统计</h4>
+                    <p><strong>创建合集数:</strong> ${data.statistics.collections_created}</p>
+                    <p><strong>创建搬运任务数:</strong> ${data.statistics.transfer_tasks_created}</p>
+                    <p><strong>上传媒体总数:</strong> ${data.statistics.total_media_uploaded}</p>
+                </div>
+
+                <div class="modal-actions">
+                    <button onclick="closeUserDetailModal()">关闭</button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('userDetailContent').innerHTML = html;
+        document.getElementById('userDetailModal').style.display = 'block';
+    } catch (error) {
+        console.error('加载用户详情失败:', error);
+        alert('加载用户详情失败');
+    }
+}
+
+function closeUserDetailModal() {
+    document.getElementById('userDetailModal').style.display = 'none';
+}
+
+function showEditRoleModal(userId, currentRole) {
+    const html = `
+        <form onsubmit="updateUserRole(event, ${userId})">
+            <div class="form-group">
+                <label>当前角色: <span class="role-badge role-${currentRole.toLowerCase()}">${getRoleDisplayName(currentRole)}</span></label>
+            </div>
+            <div class="form-group">
+                <label for="newRole">新角色:</label>
+                <select id="newRole" required>
+                    <option value="USER" ${currentRole === 'USER' ? 'selected' : ''}>普通用户</option>
+                    <option value="VIP" ${currentRole === 'VIP' ? 'selected' : ''}>VIP</option>
+                    <option value="ADMIN" ${currentRole === 'ADMIN' ? 'selected' : ''}>管理员</option>
+                </select>
+                <small>注意: 普通管理员只能设置为普通用户或VIP</small>
+            </div>
+            <div class="modal-actions">
+                <button type="submit">确认修改</button>
+                <button type="button" onclick="closeEditRoleModal()">取消</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('editRoleContent').innerHTML = html;
+    document.getElementById('editRoleModal').style.display = 'block';
+}
+
+function closeEditRoleModal() {
+    document.getElementById('editRoleModal').style.display = 'none';
+}
+
+async function updateUserRole(event, userId) {
+    event.preventDefault();
+
+    const newRole = document.getElementById('newRole').value;
+
+    try {
+        const response = await fetch(`/api/users/${userId}/role`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ role: newRole })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '修改角色失败');
+        }
+
+        alert('角色修改成功');
+        closeEditRoleModal();
+        loadUsers(currentUsersPage);
+    } catch (error) {
+        console.error('修改角色失败:', error);
+        alert(error.message);
+    }
+}
+
+async function banUser(userId) {
+    if (!confirm('确定要封禁此用户吗？')) return;
+
+    try {
+        const response = await fetch(`/api/users/${userId}/ban`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '封禁失败');
+        }
+
+        alert('用户已封禁');
+        loadUsers(currentUsersPage);
+    } catch (error) {
+        console.error('封禁失败:', error);
+        alert(error.message);
+    }
+}
+
+async function unbanUser(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}/unban`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '解封失败');
+        }
+
+        alert('用户已解封');
+        loadUsers(currentUsersPage);
+    } catch (error) {
+        console.error('解封失败:', error);
+        alert(error.message);
+    }
 }
 
 function loadSettings() {
