@@ -244,3 +244,31 @@ class UserActivity(Base):
         Index('idx_user_activities_collection', 'collection_id', 'created_at'),
     )
 
+
+class BroadcastLog(Base):
+    """广播消息日志表"""
+    __tablename__ = "broadcast_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    admin_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    message_type = Column(String(20), nullable=False)  # text, photo, video
+    message_text = Column(Text)  # 消息内容或 caption
+    file_id = Column(String(255))  # 图片/视频 file_id
+    has_buttons = Column(Boolean, default=False, nullable=False)  # 是否包含按钮
+
+    total_users = Column(Integer, nullable=False)
+    success_count = Column(Integer, default=0, nullable=False)
+    failed_count = Column(Integer, default=0, nullable=False)
+
+    started_at = Column(DateTime, default=datetime.now, nullable=False)
+    completed_at = Column(DateTime)
+    duration_seconds = Column(Integer)  # 耗时（秒）
+
+    # 关系
+    admin = relationship("User", foreign_keys=[admin_id])
+
+    # 索引
+    __table_args__ = (
+        Index('idx_broadcast_logs_admin', 'admin_id', 'started_at'),
+    )
+

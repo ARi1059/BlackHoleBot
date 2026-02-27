@@ -75,9 +75,19 @@ async def shutdown_event():
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 # CORS 配置
+# 根据环境变量配置允许的域名，默认只允许本地访问
+allowed_origins = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+# 如果配置了 WEB_DOMAIN 环境变量，添加到允许列表
+if hasattr(settings, 'WEB_DOMAIN') and settings.WEB_DOMAIN:
+    allowed_origins.append(settings.WEB_DOMAIN)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应该限制具体域名
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

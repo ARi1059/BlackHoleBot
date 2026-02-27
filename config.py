@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # Web 配置
     WEB_HOST: str = "0.0.0.0"
     WEB_PORT: int = 8000
+    WEB_DOMAIN: Optional[str] = None  # 可选的 Web 域名，用于 CORS 配置
 
     # Telegram Login
     TELEGRAM_BOT_USERNAME: str

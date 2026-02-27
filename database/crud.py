@@ -882,3 +882,78 @@ async def get_user_activity_stats(
         'period_days': days
     }
 
+
+# ==================== Broadcast CRUD ====================
+
+async def create_broadcast_log(
+    db: AsyncSession,
+    admin_id: int,
+    message_type: str,
+    message_text: Optional[str],
+    file_id: Optional[str],
+    has_buttons: bool,
+    total_users: int
+) -> int:
+    """创建广播日志"""
+    from .models import BroadcastLog
+
+    log = BroadcastLog(
+        admin_id=admin_id,
+        message_type=message_type,
+        message_text=message_text,
+        file_id=file_id,
+        has_buttons=has_buttons,
+        total_users=total_users
+    )
+    db.add(log)
+    await db.commit()
+    await db.refresh(log)
+    return log.id
+
+
+async def update_broadcast_log(
+    db: AsyncSession,
+    log_id: int,
+    success_count: int,
+    failed_count: int,
+    completed_at: datetime,
+    duration_seconds: int
+) -> bool:
+    """更新广播日志"""
+    from .models import BroadcastLog
+
+    result = await db.execute(
+        update(BroadcastLog).where(BroadcastLog.id == log_id).values(
+            success_count=success_count,
+            failed_count=failed_count,
+            completed_at=completed_at,
+            duration_seconds=duration_seconds
+        )
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def get_broadcast_logs(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20
+) -> tuple[List, int]:
+    """获取广播历史记录"""
+    from .models import BroadcastLog
+
+    # 获取总数
+    count_result = await db.execute(select(func.count(BroadcastLog.id)))
+    total = count_result.scalar()
+
+    # 获取记录
+    result = await db.execute(
+        select(BroadcastLog)
+        .order_by(BroadcastLog.started_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    logs = result.scalars().all()
+
+    return logs, total
+

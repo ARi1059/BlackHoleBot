@@ -110,3 +110,26 @@ def create_collection_info_keyboard(deep_link_code: str) -> InlineKeyboardMarkup
     )
 
     return builder.as_markup()
+
+
+def create_confirm_keyboard() -> InlineKeyboardMarkup:
+    """
+    创建确认键盘
+
+    Returns:
+        InlineKeyboardMarkup
+    """
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ 确认发送",
+            callback_data="confirm"
+        ),
+        InlineKeyboardButton(
+            text="❌ 取消",
+            callback_data="cancel"
+        )
+    )
+
+    return builder.as_markup()

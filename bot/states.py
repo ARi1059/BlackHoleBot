@@ -34,3 +34,10 @@ class ApproveTaskStates(StatesGroup):
     waiting_for_description = State() # 等待输入描述
     waiting_for_tags = State()        # 等待输入标签
     waiting_for_permission = State()  # 等待选择权限
+
+
+class AdminSettingsStates(StatesGroup):
+    """管理员设置状态"""
+    waiting_welcome_message = State()    # 等待输入欢迎消息
+    waiting_broadcast_message = State()  # 等待输入广播消息
+    confirming_broadcast = State()       # 确认广播发送

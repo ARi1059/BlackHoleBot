@@ -9,6 +9,7 @@ from .transfer import router as transfer_router
 from .transfer_admin import router as transfer_admin_router
 from .transfer_approve import router as transfer_approve_router
 from .user_management import router as user_management_router
+from .admin_settings import router as admin_settings_router
 
 __all__ = [
     "user_router",
@@ -16,5 +17,6 @@ __all__ = [
     "transfer_router",
     "transfer_admin_router",
     "transfer_approve_router",
-    "user_management_router"
+    "user_management_router",
+    "admin_settings_router"
 ]
