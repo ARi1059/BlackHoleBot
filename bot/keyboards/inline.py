@@ -66,12 +66,13 @@ def create_pagination_keyboard(
     return builder.as_markup()
 
 
-def create_search_results_keyboard(collections: list) -> InlineKeyboardMarkup:
+def create_search_results_keyboard(collections: list, show_back: bool = False) -> InlineKeyboardMarkup:
     """
     创建搜索结果键盘
 
     Args:
         collections: 合集列表
+        show_back: 是否显示返回主菜单按钮
 
     Returns:
         InlineKeyboardMarkup
@@ -85,6 +86,13 @@ def create_search_results_keyboard(collections: list) -> InlineKeyboardMarkup:
         builder.row(InlineKeyboardButton(
             text=f"{collection.name}{vip_mark}",
             callback_data=f"view_collection_{collection.deep_link_code}"
+        ))
+
+    # 添加返回主菜单按钮
+    if show_back:
+        builder.row(InlineKeyboardButton(
+            text="🏠 返回主菜单",
+            callback_data="main_menu"
         ))
 
     return builder.as_markup()
