@@ -27,6 +27,7 @@ from bot.keyboards import (
     create_collection_info_keyboard,
     create_main_menu_keyboard,
     create_browse_keyboard,
+    create_admin_panel_keyboard,
 )
 from utils import parse_start_parameter, calculate_total_pages
 from config import settings
@@ -467,6 +468,83 @@ async def show_browse_collections(message: Message, user: User, db: AsyncSession
         await message.edit_text(text, reply_markup=keyboard)
     else:
         await message.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "admin_panel")
+async def callback_admin_panel(callback: CallbackQuery, user: User):
+    """显示管理员面板"""
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        await callback.answer("❌ 权限不足", show_alert=True)
+        return
+
+    keyboard = create_admin_panel_keyboard()
+
+    await callback.message.edit_text(
+        "⚙️ 管理员面板\n\n"
+        "请选择管理功能：",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_upload")
+async def callback_admin_upload(callback: CallbackQuery):
+    """上传合集提示"""
+    await callback.message.answer(
+        "📤 上传新合集\n\n"
+        "请使用命令：/upload"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_users")
+async def callback_admin_users(callback: CallbackQuery):
+    """用户管理提示"""
+    await callback.message.answer(
+        "👥 用户管理\n\n"
+        "请使用命令：/users"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_welcome")
+async def callback_admin_welcome(callback: CallbackQuery):
+    """设置欢迎消息提示"""
+    await callback.message.answer(
+        "💬 设置欢迎消息\n\n"
+        "请使用命令：/set_welcome"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_broadcast")
+async def callback_admin_broadcast(callback: CallbackQuery):
+    """广播消息提示"""
+    await callback.message.answer(
+        "📢 广播消息\n\n"
+        "请使用命令：/broadcast"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_transfer")
+async def callback_admin_transfer(callback: CallbackQuery):
+    """搬运任务提示"""
+    await callback.message.answer(
+        "🔄 搬运任务\n\n"
+        "请使用命令：/transfer"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_stats")
+async def callback_admin_stats(callback: CallbackQuery):
+    """系统统计提示"""
+    await callback.message.answer(
+        "📊 系统统计\n\n"
+        "请使用命令：/stats"
+    )
+    await callback.answer()
 
 
 @router.message(Command("help"))

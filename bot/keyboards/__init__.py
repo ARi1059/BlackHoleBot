@@ -10,6 +10,7 @@ from .inline import (
     create_confirm_keyboard,
     create_main_menu_keyboard,
     create_browse_keyboard,
+    create_admin_panel_keyboard,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "create_confirm_keyboard",
     "create_main_menu_keyboard",
     "create_browse_keyboard",
+    "create_admin_panel_keyboard",
 ]

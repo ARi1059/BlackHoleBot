@@ -207,3 +207,36 @@ def create_browse_keyboard(collections: list, page: int, total_pages: int) -> In
 
     return builder.as_markup()
 
+
+def create_admin_panel_keyboard() -> InlineKeyboardMarkup:
+    """
+    创建管理员面板键盘
+
+    Returns:
+        InlineKeyboardMarkup
+    """
+    builder = InlineKeyboardBuilder()
+
+    # 第一行：上传合集、用户管理
+    builder.row(
+        InlineKeyboardButton(text="📤 上传合集", callback_data="admin_upload"),
+        InlineKeyboardButton(text="👥 用户管理", callback_data="admin_users")
+    )
+
+    # 第二行：设置欢迎消息、广播消息
+    builder.row(
+        InlineKeyboardButton(text="💬 设置欢迎消息", callback_data="admin_welcome"),
+        InlineKeyboardButton(text="📢 广播消息", callback_data="admin_broadcast")
+    )
+
+    # 第三行：搬运任务、系统统计
+    builder.row(
+        InlineKeyboardButton(text="🔄 搬运任务", callback_data="admin_transfer"),
+        InlineKeyboardButton(text="📊 系统统计", callback_data="admin_stats")
+    )
+
+    # 返回主菜单
+    builder.row(InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu"))
+
+    return builder.as_markup()
+
