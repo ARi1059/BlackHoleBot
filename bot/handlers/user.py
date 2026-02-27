@@ -68,14 +68,26 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
     deep_link_code = parse_start_parameter(message.text)
 
     if not deep_link_code:
-        # 显示主菜单
+        # 判断是否为管理员
+        is_admin = user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+
+        # 管理员显示专门的管理员界面
+        if is_admin:
+            admin_message = (
+                "⚙️ 管理员控制台\n\n"
+                f"👤 管理员：{user.username or user.telegram_id}\n"
+                f"🔐 权限等级：{user.role.value}\n\n"
+                "请选择功能："
+            )
+            keyboard = create_main_menu_keyboard(is_admin=True)
+            await message.answer(admin_message, reply_markup=keyboard)
+            return
+
+        # 普通用户显示欢迎消息
         import json
         from aiogram.types import InlineKeyboardMarkup
 
         welcome_message = await get_setting(db, "welcome_message")
-
-        # 判断是否为管理员
-        is_admin = user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
 
         if not welcome_message:
             # 默认欢迎消息
@@ -87,7 +99,7 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
                 "• 💎 VIP 用户专享高质量资源\n\n"
                 "请选择功能："
             )
-            keyboard = create_main_menu_keyboard(is_admin=is_admin)
+            keyboard = create_main_menu_keyboard(is_admin=False)
             await message.answer(default_message, reply_markup=keyboard)
             return
 
@@ -100,7 +112,7 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
             if message_data.get('reply_markup'):
                 reply_markup = InlineKeyboardMarkup.model_validate(message_data['reply_markup'])
             else:
-                reply_markup = create_main_menu_keyboard(is_admin=is_admin)
+                reply_markup = create_main_menu_keyboard(is_admin=False)
 
             # 根据消息类型发送
             if message_data['type'] == 'text':
@@ -125,7 +137,7 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
                 )
         except (json.JSONDecodeError, KeyError):
             # 如果不是 JSON 格式，按纯文本处理（兼容旧格式）
-            keyboard = create_main_menu_keyboard(is_admin=is_admin)
+            keyboard = create_main_menu_keyboard(is_admin=False)
             await message.answer(welcome_message, reply_markup=keyboard)
 
         return
