@@ -444,18 +444,25 @@ async def get_collections_by_role(
 async def get_hot_collections(
     db: AsyncSession,
     user_role: UserRole,
-    limit: int = 10
-) -> List[Collection]:
-    """获取热门合集（按浏览次数排序，显示所有合集）"""
+    skip: int = 0,
+    limit: int = 5
+) -> tuple[List[Collection], int]:
+    """获取热门合集（按浏览次数排序，显示所有合集，支持分页）"""
     query = select(Collection)
 
     # 不再进行权限过滤，显示所有合集
     # 权限检查将在用户点击合集时进行
 
-    # 按浏览次数降序排序
-    query = query.order_by(Collection.view_count.desc()).limit(limit)
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # 按浏览次数降序排序，支持分页
+    query = query.order_by(Collection.view_count.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
-    return result.scalars().all()
+    collections = result.scalars().all()
+
+    return collections, total
 
 
 async def increment_collection_view_count(db: AsyncSession, collection_id: int) -> bool:

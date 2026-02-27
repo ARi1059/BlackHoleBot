@@ -216,6 +216,47 @@ def create_browse_keyboard(collections: list, page: int, total_pages: int) -> In
     return builder.as_markup()
 
 
+def create_hot_collections_keyboard(collections: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    """
+    创建热门合集键盘
+
+    Args:
+        collections: 合集列表
+        page: 当前页码
+        total_pages: 总页数
+
+    Returns:
+        InlineKeyboardMarkup
+    """
+    builder = InlineKeyboardBuilder()
+
+    # 合集列表
+    for idx, collection in enumerate(collections, start=(page - 1) * 5 + 1):
+        vip_mark = " 💎" if collection.access_level.value == "vip" else ""
+        builder.row(InlineKeyboardButton(
+            text=f"{idx}. {collection.name}{vip_mark} ({collection.view_count} 浏览)",
+            callback_data=f"view_collection_{collection.deep_link_code}"
+        ))
+
+    # 分页按钮
+    buttons = []
+    if page > 1:
+        buttons.append(InlineKeyboardButton(text="◀️ 上一页", callback_data=f"hot_page_{page - 1}"))
+
+    buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="page_info"))
+
+    if page < total_pages:
+        buttons.append(InlineKeyboardButton(text="下一页 ▶️", callback_data=f"hot_page_{page + 1}"))
+
+    if buttons:
+        builder.row(*buttons)
+
+    # 返回主菜单
+    builder.row(InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu"))
+
+    return builder.as_markup()
+
+
 def create_admin_panel_keyboard() -> InlineKeyboardMarkup:
     """
     创建管理员面板键盘

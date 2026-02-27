@@ -28,6 +28,7 @@ from bot.keyboards import (
     create_collection_info_keyboard,
     create_main_menu_keyboard,
     create_browse_keyboard,
+    create_hot_collections_keyboard,
     create_admin_panel_keyboard,
 )
 from bot.states import SearchStates, UploadStates, AdminSettingsStates
@@ -523,28 +524,15 @@ async def callback_browse_page(callback: CallbackQuery, user: User, db: AsyncSes
 @router.callback_query(F.data == "hot_collections")
 async def callback_hot_collections(callback: CallbackQuery, user: User, db: AsyncSession):
     """热门合集"""
-    collections = await get_hot_collections(db, user_role=user.role, limit=5)
+    await show_hot_collections(callback.message, user, db, page=1, edit=True)
+    await callback.answer()
 
-    if not collections:
-        await callback.answer("暂无热门合集", show_alert=True)
-        return
 
-    result_text = "🔥 热门合集 TOP 5\n\n"
-
-    for idx, collection in enumerate(collections, 1):
-        vip_mark = " 💎" if collection.access_level == AccessLevel.VIP else ""
-        result_text += (
-            f"{idx}. {collection.name}{vip_mark}\n"
-            f"   📊 {collection.media_count} 个媒体\n\n"
-        )
-
-    keyboard = create_search_results_keyboard(collections, show_back=True)
-
-    # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
-    if callback.message.photo or callback.message.video:
-        await callback.message.answer(result_text, reply_markup=keyboard)
-    else:
-        await callback.message.edit_text(result_text, reply_markup=keyboard)
+@router.callback_query(F.data.startswith("hot_page_"))
+async def callback_hot_page(callback: CallbackQuery, user: User, db: AsyncSession):
+    """热门合集分页"""
+    page = int(callback.data.replace("hot_page_", ""))
+    await show_hot_collections(callback.message, user, db, page=page, edit=True)
     await callback.answer()
 
 
@@ -574,6 +562,43 @@ async def show_browse_collections(message: Message, user: User, db: AsyncSession
     text = f"📦 浏览合集 (第 {page}/{total_pages} 页)\n\n共 {total} 个合集"
 
     keyboard = create_browse_keyboard(collections, page, total_pages)
+
+    if edit:
+        # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
+        if message.photo or message.video:
+            await message.answer(text, reply_markup=keyboard)
+        else:
+            await message.edit_text(text, reply_markup=keyboard)
+    else:
+        await message.answer(text, reply_markup=keyboard)
+
+
+async def show_hot_collections(message: Message, user: User, db: AsyncSession, page: int = 1, edit: bool = False):
+    """显示热门合集列表"""
+    collections, total = await get_hot_collections(
+        db,
+        user_role=user.role,
+        skip=(page - 1) * 5,
+        limit=5
+    )
+
+    if not collections:
+        text = "🔥 暂无热门合集"
+        if edit:
+            # 判断消息类型
+            if message.photo or message.video:
+                await message.answer(text)
+            else:
+                await message.edit_text(text)
+        else:
+            await message.answer(text)
+        return
+
+    total_pages = (total + 4) // 5
+
+    text = f"🔥 热门合集 TOP {total} (第 {page}/{total_pages} 页)\n\n按浏览次数排序"
+
+    keyboard = create_hot_collections_keyboard(collections, page, total_pages)
 
     if edit:
         # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
