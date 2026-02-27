@@ -195,6 +195,9 @@ class UserStatisticsResponse(BaseModel):
     total_users: int
     banned_users: int
 
+    class Config:
+        from_attributes = True
+
 
 # ==================== 搬运任务相关 ====================
 
