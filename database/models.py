@@ -73,6 +73,7 @@ class Collection(Base):
     deep_link_code = Column(String(32), unique=True, nullable=False, index=True)
     access_level = Column(SQLEnum(AccessLevel, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=AccessLevel.PUBLIC, nullable=False, index=True)
     media_count = Column(Integer, default=0, nullable=False)
+    view_count = Column(Integer, default=0, nullable=False)  # 浏览次数
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)

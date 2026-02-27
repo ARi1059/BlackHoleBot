@@ -17,11 +17,16 @@ from database.crud import (
     get_media_count,
     get_setting,
     search_collections,
+    get_collections_by_role,
+    get_hot_collections,
+    increment_collection_view_count,
 )
 from bot.keyboards import (
     create_pagination_keyboard,
     create_search_results_keyboard,
     create_collection_info_keyboard,
+    create_main_menu_keyboard,
+    create_browse_keyboard,
 )
 from utils import parse_start_parameter, calculate_total_pages
 from config import settings
@@ -55,18 +60,21 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
     处理 /start 命令
 
     功能：
-    1. 无参数：显示欢迎消息
+    1. 无参数：显示主菜单
     2. 有参数：访问深链接合集
     """
     # 解析深链接参数
     deep_link_code = parse_start_parameter(message.text)
 
     if not deep_link_code:
-        # 显示欢迎消息
+        # 显示主菜单
         import json
         from aiogram.types import InlineKeyboardMarkup
 
         welcome_message = await get_setting(db, "welcome_message")
+
+        # 判断是否为管理员
+        is_admin = user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
 
         if not welcome_message:
             # 默认欢迎消息
@@ -76,23 +84,22 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
                 "• 📦 浏览海量媒体合集\n"
                 "• 🔍 快速搜索感兴趣的内容\n"
                 "• 💎 VIP 用户专享高质量资源\n\n"
-                "📖 使用指南:\n"
-                "/search - 搜索合集\n"
-                "/help - 查看帮助\n\n"
-                "💡 提示: 点击频道分享的链接即可直接访问合集\n\n"
-                "祝你使用愉快！✨"
+                "请选择功能："
             )
-            await message.answer(default_message)
+            keyboard = create_main_menu_keyboard(is_admin=is_admin)
+            await message.answer(default_message, reply_markup=keyboard)
             return
 
         # 尝试解析 JSON 格式的欢迎消息
         try:
             message_data = json.loads(welcome_message)
 
-            # 重建 reply_markup
+            # 重建 reply_markup，如果没有则使用主菜单
             reply_markup = None
             if message_data.get('reply_markup'):
                 reply_markup = InlineKeyboardMarkup.model_validate(message_data['reply_markup'])
+            else:
+                reply_markup = create_main_menu_keyboard(is_admin=is_admin)
 
             # 根据消息类型发送
             if message_data['type'] == 'text':
@@ -117,7 +124,8 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
                 )
         except (json.JSONDecodeError, KeyError):
             # 如果不是 JSON 格式，按纯文本处理（兼容旧格式）
-            await message.answer(welcome_message)
+            keyboard = create_main_menu_keyboard(is_admin=is_admin)
+            await message.answer(welcome_message, reply_markup=keyboard)
 
         return
 
@@ -160,6 +168,9 @@ async def view_collection(
             "联系管理员获取 VIP 权限"
         )
         return
+
+    # 增加浏览次数
+    await increment_collection_view_count(db, collection.id)
 
     # 获取媒体数量和总页数
     media_count = await get_media_count(db, collection.id)
@@ -373,6 +384,89 @@ async def callback_view_collection(callback: CallbackQuery, user: User, db: Asyn
     # 显示合集
     await view_collection(callback.message, user, db, deep_link_code, page=1)
     await callback.answer()
+
+
+@router.callback_query(F.data == "main_menu")
+async def callback_main_menu(callback: CallbackQuery, user: User, db: AsyncSession):
+    """返回主菜单"""
+    is_admin = user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    keyboard = create_main_menu_keyboard(is_admin=is_admin)
+
+    await callback.message.edit_text(
+        "👋 欢迎使用 BlackHoleBot！\n\n"
+        "请选择功能：",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "browse_collections")
+async def callback_browse_collections(callback: CallbackQuery, user: User, db: AsyncSession):
+    """浏览合集"""
+    await show_browse_collections(callback.message, user, db, page=1, edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("browse_page_"))
+async def callback_browse_page(callback: CallbackQuery, user: User, db: AsyncSession):
+    """浏览合集分页"""
+    page = int(callback.data.replace("browse_page_", ""))
+    await show_browse_collections(callback.message, user, db, page=page, edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "hot_collections")
+async def callback_hot_collections(callback: CallbackQuery, user: User, db: AsyncSession):
+    """热门合集"""
+    collections = await get_hot_collections(db, user_role=user.role, limit=10)
+
+    if not collections:
+        await callback.answer("暂无热门合集", show_alert=True)
+        return
+
+    result_text = "🔥 热门合集 TOP 10\n\n"
+
+    for idx, collection in enumerate(collections, 1):
+        vip_mark = " 💎" if collection.access_level == AccessLevel.VIP else ""
+        result_text += (
+            f"{idx}. {collection.name}{vip_mark}\n"
+            f"   👁️ {collection.view_count} 次浏览\n"
+            f"   📊 {collection.media_count} 个媒体\n\n"
+        )
+
+    keyboard = create_search_results_keyboard(collections)
+
+    await callback.message.edit_text(result_text, reply_markup=keyboard)
+    await callback.answer()
+
+
+async def show_browse_collections(message: Message, user: User, db: AsyncSession, page: int = 1, edit: bool = False):
+    """显示浏览合集列表"""
+    collections, total = await get_collections_by_role(
+        db,
+        user_role=user.role,
+        skip=(page - 1) * 10,
+        limit=10
+    )
+
+    if not collections:
+        text = "📦 暂无合集"
+        if edit:
+            await message.edit_text(text)
+        else:
+            await message.answer(text)
+        return
+
+    total_pages = (total + 9) // 10
+
+    text = f"📦 浏览合集 (第 {page}/{total_pages} 页)\n\n共 {total} 个合集"
+
+    keyboard = create_browse_keyboard(collections, page, total_pages)
+
+    if edit:
+        await message.edit_text(text, reply_markup=keyboard)
+    else:
+        await message.answer(text, reply_markup=keyboard)
 
 
 @router.message(Command("help"))
