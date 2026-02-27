@@ -43,3 +43,8 @@ class AdminSettingsStates(StatesGroup):
     waiting_broadcast_message = State()  # 等待输入广播消息
     waiting_broadcast_buttons = State()  # 等待设置广播消息按钮
     confirming_broadcast = State()       # 确认广播发送
+
+
+class SearchStates(StatesGroup):
+    """搜索状态"""
+    waiting_for_keyword = State()        # 等待输入搜索关键词

@@ -6,6 +6,7 @@
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto, InputMediaVideo
+from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 import random
 import string
@@ -29,6 +30,7 @@ from bot.keyboards import (
     create_browse_keyboard,
     create_admin_panel_keyboard,
 )
+from bot.states import SearchStates
 from utils import parse_start_parameter, calculate_total_pages
 from config import settings
 
@@ -322,12 +324,13 @@ async def callback_page_info(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "search")
-async def callback_search(callback: CallbackQuery):
+async def callback_search(callback: CallbackQuery, state: FSMContext):
     """处理搜索按钮点击"""
+    await state.set_state(SearchStates.waiting_for_keyword)
     await callback.message.answer(
-        "🔍 请使用以下格式搜索合集:\n\n"
-        "/search 关键词\n\n"
-        "示例: /search 猫咪"
+        "🔍 请输入搜索关键词:\n\n"
+        "直接发送关键词即可搜索\n"
+        "示例: 猫咪"
     )
     await callback.answer()
 
@@ -350,6 +353,58 @@ async def cmd_search(message: Message, user: User, db: AsyncSession):
         return
 
     keyword = parts[1].strip()
+
+    # 搜索合集
+    collections = await search_collections(
+        db,
+        keyword=keyword,
+        user_role=user.role,
+        skip=0,
+        limit=10
+    )
+
+    if not collections:
+        await message.answer(
+            f"🔍 搜索结果: \"{keyword}\"\n\n"
+            "❌ 未找到相关合集\n\n"
+            "💡 提示:\n"
+            "- 尝试使用其他关键词\n"
+            "- 检查拼写是否正确\n"
+            "- 联系管理员添加新内容"
+        )
+        return
+
+    # 构建结果文本
+    result_text = f"🔍 搜索结果: \"{keyword}\"\n\n找到 {len(collections)} 个合集:\n\n"
+
+    for idx, collection in enumerate(collections, 1):
+        vip_mark = " 💎VIP" if collection.access_level == AccessLevel.VIP else ""
+        tags_text = " ".join([f"#{tag}" for tag in (collection.tags or [])])
+
+        result_text += (
+            f"{idx}️⃣ {collection.name}{vip_mark}\n"
+            f"   📝 {collection.description or '无描述'}\n"
+            f"   🏷️ {tags_text or '无标签'}\n"
+            f"   📊 {collection.media_count} 个媒体\n\n"
+        )
+
+    result_text += "💡 点击按钮查看合集内容"
+
+    # 创建按钮
+    keyboard = create_search_results_keyboard(collections)
+
+    await message.answer(result_text, reply_markup=keyboard)
+
+
+@router.message(SearchStates.waiting_for_keyword)
+async def process_search_keyword(message: Message, user: User, db: AsyncSession, state: FSMContext):
+    """
+    处理用户输入的搜索关键词
+    """
+    keyword = message.text.strip()
+
+    # 清除状态
+    await state.clear()
 
     # 搜索合集
     collections = await search_collections(
