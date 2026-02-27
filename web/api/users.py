@@ -211,6 +211,34 @@ async def ban_user_endpoint(
     return SuccessResponse(message=message)
 
 
+@router.get("/statistics")
+async def get_user_statistics(
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    """
+    获取用户统计分析数据
+
+    需要管理员权限
+    """
+    try:
+        stats = await get_user_statistics_data(db)
+        logger.info(f"统计数据类型检查:")
+        logger.info(f"  role_distribution: {type(stats['role_distribution'])} = {stats['role_distribution']}")
+        logger.info(f"  active_users: {type(stats['active_users'])} = {stats['active_users']}")
+        logger.info(f"  growth_trend: {type(stats['growth_trend'])}")
+        logger.info(f"  total_users: {type(stats['total_users'])} = {stats['total_users']}")
+        logger.info(f"  banned_users: {type(stats['banned_users'])} = {stats['banned_users']}")
+
+        # 直接返回字典，不经过 Pydantic 验证
+        return stats
+    except Exception as e:
+        logger.error(f"获取统计数据失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"获取统计数据失败: {str(e)}")
+
+
 @router.get("/{user_id}", response_model=UserDetailResponse)
 async def get_user_detail(
     user_id: int,
@@ -352,31 +380,4 @@ async def batch_set_vip(
         }
     )
 
-
-@router.get("/statistics")
-async def get_user_statistics(
-    db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
-):
-    """
-    获取用户统计分析数据
-
-    需要管理员权限
-    """
-    try:
-        stats = await get_user_statistics_data(db)
-        logger.info(f"统计数据类型检查:")
-        logger.info(f"  role_distribution: {type(stats['role_distribution'])} = {stats['role_distribution']}")
-        logger.info(f"  active_users: {type(stats['active_users'])} = {stats['active_users']}")
-        logger.info(f"  growth_trend: {type(stats['growth_trend'])}")
-        logger.info(f"  total_users: {type(stats['total_users'])} = {stats['total_users']}")
-        logger.info(f"  banned_users: {type(stats['banned_users'])} = {stats['banned_users']}")
-
-        # 直接返回字典，不经过 Pydantic 验证
-        return stats
-    except Exception as e:
-        logger.error(f"获取统计数据失败: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"获取统计数据失败: {str(e)}")
 
