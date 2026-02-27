@@ -1148,7 +1148,7 @@ function renderTasksTable(tasks) {
         if (task.status === 'completed') {
             actions = `<button onclick="approveTask(${task.id})" style="padding: 4px 12px; margin-right: 5px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">审核</button>`;
         }
-        actions += `<button onclick="deleteTask(${task.id}, '${task.task_name.replace(/'/g, "\\'")}'))" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>`;
+        actions += `<button onclick="deleteTask(${task.id}, '${task.task_name.replace(/'/g, "\\'")}')" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>`;
 
         return `
         <tr style="border-bottom: 1px solid #e0e0e0;">
