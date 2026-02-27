@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
 
 from config import settings
@@ -58,8 +59,11 @@ async def main():
     # 设置 Redis 客户端到 transfer_executor
     transfer_executor.set_redis_client(redis_client)
 
-    # 创建 Bot 实例
-    bot = Bot(token=settings.BOT_TOKEN, parse_mode=ParseMode.HTML)
+    # 创建 Bot 实例（使用新的 aiogram 3.7+ 语法）
+    bot = Bot(
+        token=settings.BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
 
     # 创建 Redis 存储用于 FSM，使用与 Web 端相同的 key_builder
     storage = RedisStorage(redis_client, key_builder=DefaultKeyBuilder(with_destiny=True))
