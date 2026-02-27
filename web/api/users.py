@@ -142,12 +142,12 @@ async def ban_user_endpoint(
     user_id: int,
     request: BanUserRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(require_super_admin)
 ):
     """
     封禁/解封用户
 
-    需要管理员权限
+    需要超级管理员权限（仅Bot端使用，Web端不提供此功能）
     """
     user = await get_user(db, user_id)
     if not user:
@@ -157,10 +157,9 @@ async def ban_user_endpoint(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="不能封禁自己")
 
-    # 不能封禁管理员（除非是超级管理员）
-    if user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        if current_user.role != UserRole.SUPER_ADMIN:
-            raise HTTPException(status_code=403, detail="权限不足")
+    # 不能封禁超级管理员
+    if user.role == UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="不能封禁超级管理员")
 
     # 更新封禁状态
     success = await ban_user(db, user_id, request.is_banned)

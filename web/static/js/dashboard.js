@@ -1418,10 +1418,6 @@ function renderUsersPage(data) {
                             <button class="btn-small" onclick="viewUserDetail(${user.id})">详情</button>
                             ${user.role !== 'SUPER_ADMIN' ? `
                                 <button class="btn-small" onclick="showEditRoleModal(${user.id}, '${user.role}')">修改角色</button>
-                                ${user.is_banned ?
-                                    `<button class="btn-small btn-success" onclick="unbanUser(${user.id})">解封</button>` :
-                                    `<button class="btn-small btn-danger" onclick="banUser(${user.id})">封禁</button>`
-                                }
                             ` : ''}
                         </td>
                     </tr>
@@ -1588,52 +1584,6 @@ async function updateUserRole(event, userId) {
         loadUsers(currentUsersPage);
     } catch (error) {
         console.error('修改角色失败:', error);
-        alert(error.message);
-    }
-}
-
-async function banUser(userId) {
-    if (!confirm('确定要封禁此用户吗？')) return;
-
-    try {
-        const response = await fetch(`/api/users/${userId}/ban`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || '封禁失败');
-        }
-
-        alert('用户已封禁');
-        loadUsers(currentUsersPage);
-    } catch (error) {
-        console.error('封禁失败:', error);
-        alert(error.message);
-    }
-}
-
-async function unbanUser(userId) {
-    try {
-        const response = await fetch(`/api/users/${userId}/unban`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || '解封失败');
-        }
-
-        alert('用户已解封');
-        loadUsers(currentUsersPage);
-    } catch (error) {
-        console.error('解封失败:', error);
         alert(error.message);
     }
 }
