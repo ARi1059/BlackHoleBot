@@ -363,6 +363,13 @@ async def get_user_statistics(
 
     需要管理员权限
     """
-    stats = await get_user_statistics_data(db)
-    return UserStatisticsResponse(**stats)
+    try:
+        stats = await get_user_statistics_data(db)
+        logger.info(f"统计数据: {stats}")
+        return UserStatisticsResponse(**stats)
+    except Exception as e:
+        logger.error(f"获取统计数据失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"获取统计数据失败: {str(e)}")
 
