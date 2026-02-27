@@ -12,7 +12,7 @@ echo ""
 
 # 配置
 API_BASE="http://localhost:8000"
-ADMIN_TELEGRAM_ID="YOUR_ADMIN_TELEGRAM_ID"  # 请替换为你的管理员 Telegram ID
+ADMIN_TELEGRAM_ID="624144243"  # 管理员 Telegram ID
 
 # 颜色输出
 GREEN='\033[0;32m'
