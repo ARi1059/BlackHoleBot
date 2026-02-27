@@ -344,7 +344,7 @@ async def process_broadcast_buttons(message: Message, state: FSMContext, db: Asy
 
         # 创建键盘
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        message_data['reply_markup'] = keyboard
+        message_data['reply_markup'] = keyboard.model_dump()
 
         # 获取用户总数
         users, total_users = await get_users(db, skip=0, limit=999999)
@@ -469,6 +469,12 @@ async def broadcast_to_users(bot, message_data: dict, db: AsyncSession) -> tuple
     # 获取所有用户
     users, total = await get_users(db, skip=0, limit=999999)
 
+    # 转换 reply_markup 为对象
+    from aiogram.types import InlineKeyboardMarkup
+    reply_markup = None
+    if message_data.get('reply_markup'):
+        reply_markup = InlineKeyboardMarkup.model_validate(message_data['reply_markup'])
+
     for user in users:
         try:
             # 发送消息
@@ -477,7 +483,7 @@ async def broadcast_to_users(bot, message_data: dict, db: AsyncSession) -> tuple
                     chat_id=user.telegram_id,
                     text=message_data['text'],
                     parse_mode="HTML",
-                    reply_markup=message_data.get('reply_markup')
+                    reply_markup=reply_markup
                 )
             elif message_data['type'] == 'photo':
                 await bot.send_photo(
@@ -485,7 +491,7 @@ async def broadcast_to_users(bot, message_data: dict, db: AsyncSession) -> tuple
                     photo=message_data['file_id'],
                     caption=message_data.get('caption'),
                     parse_mode="HTML",
-                    reply_markup=message_data.get('reply_markup')
+                    reply_markup=reply_markup
                 )
             elif message_data['type'] == 'video':
                 await bot.send_video(
@@ -493,7 +499,7 @@ async def broadcast_to_users(bot, message_data: dict, db: AsyncSession) -> tuple
                     video=message_data['file_id'],
                     caption=message_data.get('caption'),
                     parse_mode="HTML",
-                    reply_markup=message_data.get('reply_markup')
+                    reply_markup=reply_markup
                 )
 
             success += 1
@@ -515,7 +521,7 @@ async def broadcast_to_users(bot, message_data: dict, db: AsyncSession) -> tuple
                         chat_id=user.telegram_id,
                         text=message_data['text'],
                         parse_mode="HTML",
-                        reply_markup=message_data.get('reply_markup')
+                        reply_markup=reply_markup
                     )
                 elif message_data['type'] == 'photo':
                     await bot.send_photo(
@@ -523,7 +529,7 @@ async def broadcast_to_users(bot, message_data: dict, db: AsyncSession) -> tuple
                         photo=message_data['file_id'],
                         caption=message_data.get('caption'),
                         parse_mode="HTML",
-                        reply_markup=message_data.get('reply_markup')
+                        reply_markup=reply_markup
                     )
                 elif message_data['type'] == 'video':
                     await bot.send_video(
@@ -531,7 +537,7 @@ async def broadcast_to_users(bot, message_data: dict, db: AsyncSession) -> tuple
                         video=message_data['file_id'],
                         caption=message_data.get('caption'),
                         parse_mode="HTML",
-                        reply_markup=message_data.get('reply_markup')
+                        reply_markup=reply_markup
                     )
                 success += 1
             except Exception as retry_error:
