@@ -423,17 +423,11 @@ async def get_collections_by_role(
     skip: int = 0,
     limit: int = 20
 ) -> tuple[List[Collection], int]:
-    """根据用户角色获取合集列表"""
+    """根据用户角色获取合集列表（显示所有合集，不进行权限过滤）"""
     query = select(Collection)
 
-    # 权限过滤
-    if user_role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        if user_role == UserRole.VIP:
-            # VIP 可以看到公开和 VIP 合集
-            query = query.where(Collection.access_level.in_([AccessLevel.PUBLIC, AccessLevel.VIP]))
-        else:
-            # 普通用户只能看到公开合集
-            query = query.where(Collection.access_level == AccessLevel.PUBLIC)
+    # 不再进行权限过滤，显示所有合集
+    # 权限检查将在用户点击合集时进行
 
     # 总数
     count_query = select(func.count()).select_from(query.subquery())
@@ -452,15 +446,11 @@ async def get_hot_collections(
     user_role: UserRole,
     limit: int = 10
 ) -> List[Collection]:
-    """获取热门合集（按浏览次数排序）"""
+    """获取热门合集（按浏览次数排序，显示所有合集）"""
     query = select(Collection)
 
-    # 权限过滤
-    if user_role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        if user_role == UserRole.VIP:
-            query = query.where(Collection.access_level.in_([AccessLevel.PUBLIC, AccessLevel.VIP]))
-        else:
-            query = query.where(Collection.access_level == AccessLevel.PUBLIC)
+    # 不再进行权限过滤，显示所有合集
+    # 权限检查将在用户点击合集时进行
 
     # 按浏览次数降序排序
     query = query.order_by(Collection.view_count.desc()).limit(limit)

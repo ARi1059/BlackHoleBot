@@ -457,6 +457,21 @@ async def callback_view_collection(callback: CallbackQuery, user: User, db: Asyn
     """
     deep_link_code = callback.data.replace("view_collection_", "")
 
+    # 先检查合集是否存在
+    collection = await get_collection_by_code(db, deep_link_code)
+
+    if not collection:
+        await callback.answer("❌ 合集不存在或已被删除", show_alert=True)
+        return
+
+    # 检查权限
+    if not check_collection_access(user, collection):
+        await callback.answer(
+            "❌ 这是 VIP 专属合集\n💎 升级为 VIP 用户即可访问",
+            show_alert=True
+        )
+        return
+
     # 删除搜索结果消息
     try:
         await callback.message.delete()
