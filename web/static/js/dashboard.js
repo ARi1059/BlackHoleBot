@@ -1656,8 +1656,15 @@ async function executeBatchVIP(action) {
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || '操作失败');
+            let errorMessage = '操作失败';
+            try {
+                const error = await response.json();
+                errorMessage = error.detail || errorMessage;
+            } catch (e) {
+                // 如果响应不是JSON，使用状态文本
+                errorMessage = `${response.status} ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
 
         const data = await response.json();
