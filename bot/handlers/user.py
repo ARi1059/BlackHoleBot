@@ -85,7 +85,8 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
 
         # 普通用户显示欢迎消息
         import json
-        from aiogram.types import InlineKeyboardMarkup
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
 
         welcome_message = await get_setting(db, "welcome_message")
 
@@ -107,12 +108,25 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
         try:
             message_data = json.loads(welcome_message)
 
-            # 重建 reply_markup，如果没有则使用主菜单
-            reply_markup = None
+            # 构建键盘：自定义按钮 + 默认主菜单按钮
+            builder = InlineKeyboardBuilder()
+
+            # 添加自定义按钮（如果有）
             if message_data.get('reply_markup'):
-                reply_markup = InlineKeyboardMarkup.model_validate(message_data['reply_markup'])
-            else:
-                reply_markup = create_main_menu_keyboard(is_admin=False)
+                custom_markup = InlineKeyboardMarkup.model_validate(message_data['reply_markup'])
+                for row in custom_markup.inline_keyboard:
+                    builder.row(*row)
+
+            # 添加默认主菜单按钮（始终显示）
+            builder.row(
+                InlineKeyboardButton(text="📦 浏览合集", callback_data="browse_collections"),
+                InlineKeyboardButton(text="🔥 热门合集", callback_data="hot_collections")
+            )
+            builder.row(
+                InlineKeyboardButton(text="🔍 搜索合集", callback_data="search")
+            )
+
+            reply_markup = builder.as_markup()
 
             # 根据消息类型发送
             if message_data['type'] == 'text':
