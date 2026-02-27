@@ -36,19 +36,17 @@ app = FastAPI(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
-    """捕获422验证错误并记录详细信息"""
-    logger.error(f"422 验证错误 - URL: {request.url}")
-    logger.error(f"请求方法: {request.method}")
-    logger.error(f"请求头: {request.headers}")
-    logger.error(f"验证错误详情: {exc.errors()}")
-    logger.error(f"请求体: {exc.body}")
+    """捕获422验证错误并记录脱敏信息"""
+    # 只记录字段位置和错误类型，不记录用户输入值
+    safe_errors = [
+        {"type": e.get("type"), "loc": e.get("loc"), "msg": e.get("msg")}
+        for e in exc.errors()
+    ]
+    logger.error(f"422 验证错误 - {request.method} {request.url.path} - {safe_errors}")
 
     return JSONResponse(
         status_code=422,
-        content={
-            "detail": exc.errors(),
-            "body": str(exc.body)
-        }
+        content={"detail": safe_errors}
     )
 
 

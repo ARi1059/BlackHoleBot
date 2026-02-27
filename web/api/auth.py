@@ -91,17 +91,30 @@ async def login_with_code(
     """
     # 从 Redis 获取验证码
     redis_key = f"web_login:{login_data.telegram_id}"
+    fail_key = f"web_login_fail:{login_data.telegram_id}"
     stored_code = await redis_client.get(redis_key)
 
     if not stored_code:
         raise HTTPException(status_code=401, detail="验证码不存在或已过期，请在 Bot 中发送 /login 获取新验证码")
 
+    # 检查失败次数（最多允许 5 次尝试）
+    fail_count = await redis_client.get(fail_key)
+    if fail_count and int(fail_count) >= 5:
+        # 超过限制，直接删除验证码使其失效
+        await redis_client.delete(redis_key)
+        await redis_client.delete(fail_key)
+        raise HTTPException(status_code=429, detail="验证码尝试次数过多，请重新获取验证码")
+
     # 验证验证码（Redis 已配置 decode_responses=True，返回的是字符串）
     if stored_code != login_data.password:
+        # 记录失败次数，过期时间与验证码一致（5分钟）
+        await redis_client.incr(fail_key)
+        await redis_client.expire(fail_key, 300)
         raise HTTPException(status_code=401, detail="验证码错误")
 
-    # 验证通过，删除验证码
+    # 验证通过，删除验证码和失败计数
     await redis_client.delete(redis_key)
+    await redis_client.delete(fail_key)
 
     # 获取用户
     user = await get_user_by_telegram_id(db, login_data.telegram_id)
