@@ -39,5 +39,7 @@ class ApproveTaskStates(StatesGroup):
 class AdminSettingsStates(StatesGroup):
     """管理员设置状态"""
     waiting_welcome_message = State()    # 等待输入欢迎消息
+    waiting_welcome_buttons = State()    # 等待设置欢迎消息按钮
     waiting_broadcast_message = State()  # 等待输入广播消息
+    waiting_broadcast_buttons = State()  # 等待设置广播消息按钮
     confirming_broadcast = State()       # 确认广播发送

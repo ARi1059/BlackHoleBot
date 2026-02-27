@@ -87,24 +87,46 @@ async def process_welcome_message(message: Message, state: FSMContext, db: Async
         message_data['type'] = 'photo'
         message_data['file_id'] = message.photo[-1].file_id
         message_data['caption'] = message.caption or ""
-        if message.reply_markup:
-            message_data['reply_markup'] = message.reply_markup.model_dump()
     elif message.video:
         # 视频消息
         message_data['type'] = 'video'
         message_data['file_id'] = message.video.file_id
         message_data['caption'] = message.caption or ""
-        if message.reply_markup:
-            message_data['reply_markup'] = message.reply_markup.model_dump()
     elif message.text:
         # 纯文本消息
         message_data['type'] = 'text'
         message_data['text'] = message.text
-        if message.reply_markup:
-            message_data['reply_markup'] = message.reply_markup.model_dump()
     else:
         await message.answer("❌ 不支持的消息类型，请发送文本、图片或视频")
         return
+
+    # 保存消息数据到状态
+    await state.update_data(message_data=message_data)
+
+    # 询问是否添加按钮
+    await message.answer(
+        "✅ 消息内容已接收！\n\n"
+        "是否需要添加内联按钮？\n\n"
+        "• 发送 /skip 跳过按钮设置\n"
+        "• 发送按钮配置（每行一个按钮）\n\n"
+        "格式：<code>按钮文字|链接</code>\n"
+        "示例：\n"
+        "<code>访问网站|https://example.com\n"
+        "联系客服|https://t.me/support</code>",
+        parse_mode="HTML"
+    )
+
+    await state.set_state(AdminSettingsStates.waiting_welcome_buttons)
+
+
+@router.message(AdminSettingsStates.waiting_welcome_buttons, Command("skip"))
+async def skip_welcome_buttons(message: Message, state: FSMContext, db: AsyncSession):
+    """跳过按钮设置"""
+    import json
+
+    # 获取消息数据
+    data = await state.get_data()
+    message_data = data.get('message_data', {})
 
     # 保存到数据库（JSON 格式）
     await set_setting(db, "welcome_message", json.dumps(message_data, ensure_ascii=False))
@@ -113,12 +135,63 @@ async def process_welcome_message(message: Message, state: FSMContext, db: Async
         f"✅ <b>欢迎消息已更新！</b>\n\n"
         f"━━━━━━━━━━━━━━━━\n"
         f"<b>消息类型：</b>{message_data['type']}\n"
-        f"<b>预览：</b>新用户将收到您刚才发送的消息",
+        f"<b>按钮：</b>无",
         parse_mode="HTML"
     )
 
-    # 清除状态
     await state.clear()
+
+
+@router.message(AdminSettingsStates.waiting_welcome_buttons)
+async def process_welcome_buttons(message: Message, state: FSMContext, db: AsyncSession):
+    """处理欢迎消息按钮"""
+    import json
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    # 获取消息数据
+    data = await state.get_data()
+    message_data = data.get('message_data', {})
+
+    # 解析按钮配置
+    try:
+        lines = message.text.strip().split('\n')
+        buttons = []
+
+        for line in lines:
+            if '|' not in line:
+                await message.answer("❌ 格式错误！每行格式应为：<code>按钮文字|链接</code>", parse_mode="HTML")
+                return
+
+            text, url = line.split('|', 1)
+            text = text.strip()
+            url = url.strip()
+
+            if not text or not url:
+                await message.answer("❌ 按钮文字和链接不能为空", parse_mode="HTML")
+                return
+
+            buttons.append([InlineKeyboardButton(text=text, url=url)])
+
+        # 创建键盘
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        message_data['reply_markup'] = keyboard.model_dump()
+
+        # 保存到数据库
+        await set_setting(db, "welcome_message", json.dumps(message_data, ensure_ascii=False))
+
+        await message.answer(
+            f"✅ <b>欢迎消息已更新！</b>\n\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"<b>消息类型：</b>{message_data['type']}\n"
+            f"<b>按钮数量：</b>{len(buttons)}",
+            parse_mode="HTML"
+        )
+
+        await state.clear()
+
+    except Exception as e:
+        logger.error(f"解析按钮配置失败: {e}")
+        await message.answer("❌ 解析按钮配置失败，请检查格式")
 
 
 # ==================== 广播消息 ====================
@@ -163,21 +236,44 @@ async def process_broadcast_message(message: Message, user: User, state: FSMCont
         message_data['type'] = 'photo'
         message_data['file_id'] = message.photo[-1].file_id
         message_data['caption'] = message.caption or ""
-        message_data['reply_markup'] = message.reply_markup
     elif message.video:
         # 视频消息
         message_data['type'] = 'video'
         message_data['file_id'] = message.video.file_id
         message_data['caption'] = message.caption or ""
-        message_data['reply_markup'] = message.reply_markup
     elif message.text:
         # 纯文本消息
         message_data['type'] = 'text'
         message_data['text'] = message.text
-        message_data['reply_markup'] = message.reply_markup
     else:
         await message.answer("❌ 不支持的消息类型，请发送文本、图片或视频")
         return
+
+    # 保存消息数据到状态
+    await state.update_data(message_data=message_data)
+
+    # 询问是否添加按钮
+    await message.answer(
+        "✅ 消息内容已接收！\n\n"
+        "是否需要添加内联按钮？\n\n"
+        "• 发送 /skip 跳过按钮设置\n"
+        "• 发送按钮配置（每行一个按钮）\n\n"
+        "格式：<code>按钮文字|链接</code>\n"
+        "示例：\n"
+        "<code>访问网站|https://example.com\n"
+        "联系客服|https://t.me/support</code>",
+        parse_mode="HTML"
+    )
+
+    await state.set_state(AdminSettingsStates.waiting_broadcast_buttons)
+
+
+@router.message(AdminSettingsStates.waiting_broadcast_buttons, Command("skip"))
+async def skip_broadcast_buttons(message: Message, state: FSMContext, db: AsyncSession):
+    """跳过广播按钮设置"""
+    # 获取消息数据
+    data = await state.get_data()
+    message_data = data.get('message_data', {})
 
     # 获取用户总数
     users, total_users = await get_users(db, skip=0, limit=999999)
@@ -187,8 +283,8 @@ async def process_broadcast_message(message: Message, user: User, state: FSMCont
         await state.clear()
         return
 
-    # 保存消息数据到状态
-    await state.update_data(message_data=message_data, total_users=total_users)
+    # 更新状态数据
+    await state.update_data(total_users=total_users)
 
     # 显示预览和确认按钮
     preview_text = f"📋 <b>广播预览：</b>\n\n"
@@ -197,11 +293,12 @@ async def process_broadcast_message(message: Message, user: User, state: FSMCont
         preview_text += f"{message_data['text']}\n\n"
     else:
         preview_text += f"[{message_data['type'].upper()}]\n"
-        if message_data['caption']:
+        if message_data.get('caption'):
             preview_text += f"{message_data['caption']}\n\n"
 
     preview_text += f"━━━━━━━━━━━━━━━━\n"
-    preview_text += f"目标用户：<b>{total_users}</b> 人"
+    preview_text += f"目标用户：<b>{total_users}</b> 人\n"
+    preview_text += f"按钮：无"
 
     # 创建确认键盘
     keyboard = create_confirm_keyboard()
@@ -214,6 +311,81 @@ async def process_broadcast_message(message: Message, user: User, state: FSMCont
 
     # 设置状态
     await state.set_state(AdminSettingsStates.confirming_broadcast)
+
+
+@router.message(AdminSettingsStates.waiting_broadcast_buttons)
+async def process_broadcast_buttons(message: Message, state: FSMContext, db: AsyncSession):
+    """处理广播消息按钮"""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    # 获取消息数据
+    data = await state.get_data()
+    message_data = data.get('message_data', {})
+
+    # 解析按钮配置
+    try:
+        lines = message.text.strip().split('\n')
+        buttons = []
+
+        for line in lines:
+            if '|' not in line:
+                await message.answer("❌ 格式错误！每行格式应为：<code>按钮文字|链接</code>", parse_mode="HTML")
+                return
+
+            text, url = line.split('|', 1)
+            text = text.strip()
+            url = url.strip()
+
+            if not text or not url:
+                await message.answer("❌ 按钮文字和链接不能为空", parse_mode="HTML")
+                return
+
+            buttons.append([InlineKeyboardButton(text=text, url=url)])
+
+        # 创建键盘
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        message_data['reply_markup'] = keyboard
+
+        # 获取用户总数
+        users, total_users = await get_users(db, skip=0, limit=999999)
+
+        if total_users == 0:
+            await message.answer("❌ 没有用户可以广播")
+            await state.clear()
+            return
+
+        # 更新状态数据
+        await state.update_data(message_data=message_data, total_users=total_users)
+
+        # 显示预览和确认按钮
+        preview_text = f"📋 <b>广播预览：</b>\n\n"
+
+        if message_data['type'] == 'text':
+            preview_text += f"{message_data['text']}\n\n"
+        else:
+            preview_text += f"[{message_data['type'].upper()}]\n"
+            if message_data.get('caption'):
+                preview_text += f"{message_data['caption']}\n\n"
+
+        preview_text += f"━━━━━━━━━━━━━━━━\n"
+        preview_text += f"目标用户：<b>{total_users}</b> 人\n"
+        preview_text += f"按钮数量：<b>{len(buttons)}</b>"
+
+        # 创建确认键盘
+        confirm_keyboard = create_confirm_keyboard()
+
+        await message.answer(
+            preview_text,
+            parse_mode="HTML",
+            reply_markup=confirm_keyboard
+        )
+
+        # 设置状态
+        await state.set_state(AdminSettingsStates.confirming_broadcast)
+
+    except Exception as e:
+        logger.error(f"解析按钮配置失败: {e}")
+        await message.answer("❌ 解析按钮配置失败，请检查格式")
 
 
 @router.callback_query(AdminSettingsStates.confirming_broadcast, F.data == "confirm")
