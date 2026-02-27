@@ -376,11 +376,12 @@ async def search_collections(
         query = query.where(Collection.access_level == AccessLevel.PUBLIC)
 
     # 关键词搜索
+    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
     query = query.where(
         or_(
             Collection.name.ilike(f"%{keyword}%"),
             Collection.description.ilike(f"%{keyword}%"),
-            Collection.tags.contains([keyword])
+            Collection.tags.op('@>')(f'{{{keyword}}}')  # PostgreSQL array contains operator
         )
     )
 

@@ -55,7 +55,10 @@ async def cmd_set_welcome(message: Message, user: User, state: FSMContext, db: A
         f"📝 <b>当前欢迎消息：</b>\n\n"
         f"{current_message}\n\n"
         f"━━━━━━━━━━━━━━━━\n\n"
-        f"请发送新的欢迎消息（支持 HTML 格式）\n"
+        f"请发送新的欢迎消息：\n"
+        f"• 支持文本（HTML 格式）\n"
+        f"• 支持图片/视频（可附带文字说明）\n"
+        f"• 支持按钮（使用 inline keyboard）\n\n"
         f"发送 /cancel 取消设置",
         parse_mode="HTML"
     )
@@ -74,20 +77,43 @@ async def cancel_set_welcome(message: Message, state: FSMContext):
 @router.message(AdminSettingsStates.waiting_welcome_message)
 async def process_welcome_message(message: Message, state: FSMContext, db: AsyncSession):
     """处理欢迎消息"""
-    new_message = message.text or message.caption
+    import json
 
-    if not new_message:
-        await message.answer("❌ 请发送文本消息")
+    # 提取消息数据
+    message_data = {}
+
+    if message.photo:
+        # 图片消息
+        message_data['type'] = 'photo'
+        message_data['file_id'] = message.photo[-1].file_id
+        message_data['caption'] = message.caption or ""
+        if message.reply_markup:
+            message_data['reply_markup'] = message.reply_markup.model_dump()
+    elif message.video:
+        # 视频消息
+        message_data['type'] = 'video'
+        message_data['file_id'] = message.video.file_id
+        message_data['caption'] = message.caption or ""
+        if message.reply_markup:
+            message_data['reply_markup'] = message.reply_markup.model_dump()
+    elif message.text:
+        # 纯文本消息
+        message_data['type'] = 'text'
+        message_data['text'] = message.text
+        if message.reply_markup:
+            message_data['reply_markup'] = message.reply_markup.model_dump()
+    else:
+        await message.answer("❌ 不支持的消息类型，请发送文本、图片或视频")
         return
 
-    # 保存到数据库
-    await set_setting(db, "welcome_message", new_message)
+    # 保存到数据库（JSON 格式）
+    await set_setting(db, "welcome_message", json.dumps(message_data, ensure_ascii=False))
 
     await message.answer(
         f"✅ <b>欢迎消息已更新！</b>\n\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"<b>预览：</b>\n\n"
-        f"{new_message}",
+        f"<b>消息类型：</b>{message_data['type']}\n"
+        f"<b>预览：</b>新用户将收到您刚才发送的消息",
         parse_mode="HTML"
     )
 

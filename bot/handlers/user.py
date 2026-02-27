@@ -63,9 +63,14 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
 
     if not deep_link_code:
         # 显示欢迎消息
+        import json
+        from aiogram.types import InlineKeyboardMarkup
+
         welcome_message = await get_setting(db, "welcome_message")
+
         if not welcome_message:
-            welcome_message = (
+            # 默认欢迎消息
+            default_message = (
                 "👋 欢迎使用 BlackHoleBot！\n\n"
                 "🎯 功能介绍:\n"
                 "• 📦 浏览海量媒体合集\n"
@@ -77,8 +82,43 @@ async def cmd_start(message: Message, user: User, db: AsyncSession):
                 "💡 提示: 点击频道分享的链接即可直接访问合集\n\n"
                 "祝你使用愉快！✨"
             )
+            await message.answer(default_message)
+            return
 
-        await message.answer(welcome_message)
+        # 尝试解析 JSON 格式的欢迎消息
+        try:
+            message_data = json.loads(welcome_message)
+
+            # 重建 reply_markup
+            reply_markup = None
+            if message_data.get('reply_markup'):
+                reply_markup = InlineKeyboardMarkup.model_validate(message_data['reply_markup'])
+
+            # 根据消息类型发送
+            if message_data['type'] == 'text':
+                await message.answer(
+                    text=message_data['text'],
+                    parse_mode="HTML",
+                    reply_markup=reply_markup
+                )
+            elif message_data['type'] == 'photo':
+                await message.answer_photo(
+                    photo=message_data['file_id'],
+                    caption=message_data.get('caption'),
+                    parse_mode="HTML",
+                    reply_markup=reply_markup
+                )
+            elif message_data['type'] == 'video':
+                await message.answer_video(
+                    video=message_data['file_id'],
+                    caption=message_data.get('caption'),
+                    parse_mode="HTML",
+                    reply_markup=reply_markup
+                )
+        except (json.JSONDecodeError, KeyError):
+            # 如果不是 JSON 格式，按纯文本处理（兼容旧格式）
+            await message.answer(welcome_message)
+
         return
 
     # 访问深链接合集
