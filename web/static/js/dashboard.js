@@ -1790,6 +1790,156 @@ async function loadUserStats() {
     }
 }
 
+// 行为分析页面
+async function loadAnalytics() {
+    document.getElementById('pageContent').innerHTML = '<h2>📈 行为分析</h2><p>加载中...</p>';
+
+    try {
+        const response = await fetch('/api/analytics/popular-collections?limit=10&days=30', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) throw new Error('获取数据失败');
+
+        const data = await response.json();
+
+        const html = `
+            <div class="page-header">
+                <h2>📈 用户行为分析</h2>
+            </div>
+
+            <!-- 最受欢迎的合集 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin-bottom: 15px;">🔥 最受欢迎的合集（最近30天）</h3>
+                ${data.collections.length > 0 ? `
+                    <table style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left; padding: 10px; background: #f5f5f5;">排名</th>
+                                <th style="text-align: left; padding: 10px; background: #f5f5f5;">合集名称</th>
+                                <th style="text-align: center; padding: 10px; background: #f5f5f5;">访问权限</th>
+                                <th style="text-align: center; padding: 10px; background: #f5f5f5;">媒体数量</th>
+                                <th style="text-align: right; padding: 10px; background: #f5f5f5;">访问次数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.collections.map((col, index) => `
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e0e0e0;">
+                                        <span style="font-size: 20px; font-weight: bold; color: ${index === 0 ? '#FFD700' : index === 1 ? '#C0C0C0' : index === 2 ? '#CD7F32' : '#999'};">
+                                            ${index + 1}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e0e0e0; font-weight: 500;">${col.collection_name}</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e0e0e0; text-align: center;">
+                                        <span class="access-badge access-${col.access_level}">${col.access_level === 'public' ? '公开' : 'VIP'}</span>
+                                    </td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e0e0e0; text-align: center; color: #666;">${col.media_count}</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e0e0e0; text-align: right; font-weight: bold; color: #667eea;">${col.view_count}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                ` : '<p style="color: #999; text-align: center; padding: 20px;">暂无数据</p>'}
+            </div>
+
+            <!-- 用户活动查询 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin-bottom: 15px;">🔍 用户活动查询</h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <input type="number" id="userIdInput" placeholder="输入用户ID" style="flex: 1; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px;">
+                    <button onclick="loadUserActivityStats()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">查询</button>
+                </div>
+                <div id="userActivityResult"></div>
+            </div>
+        `;
+
+        document.getElementById('pageContent').innerHTML = html;
+
+    } catch (error) {
+        console.error('加载行为分析失败:', error);
+        document.getElementById('pageContent').innerHTML = '<h2>📈 行为分析</h2><p style="color: red;">加载失败，请重试</p>';
+    }
+}
+
+async function loadUserActivityStats() {
+    const userId = document.getElementById('userIdInput').value.trim();
+
+    if (!userId) {
+        alert('请输入用户ID');
+        return;
+    }
+
+    const resultDiv = document.getElementById('userActivityResult');
+    resultDiv.innerHTML = '<p>加载中...</p>';
+
+    try {
+        const response = await fetch(`/api/analytics/users/${userId}/stats?days=30`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) throw new Error('获取用户活动统计失败');
+
+        const data = await response.json();
+
+        const html = `
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 6px; margin-top: 10px;">
+                <h4 style="margin-bottom: 15px;">用户活动统计（最近${data.period_days}天）</h4>
+
+                <div style="margin-bottom: 20px;">
+                    <p style="color: #666; margin-bottom: 5px;">总活动次数: <strong style="color: #667eea; font-size: 18px;">${data.total_activities}</strong></p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <h5 style="margin-bottom: 10px;">活动类型分布:</h5>
+                    ${Object.keys(data.activity_by_type).length > 0 ? `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                            ${Object.entries(data.activity_by_type).map(([type, count]) => `
+                                <div style="background: white; padding: 10px; border-radius: 4px; text-align: center;">
+                                    <div style="font-size: 20px; font-weight: bold; color: #667eea;">${count}</div>
+                                    <div style="color: #666; font-size: 12px; margin-top: 5px;">${type}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : '<p style="color: #999;">无活动记录</p>'}
+                </div>
+
+                <div>
+                    <h5 style="margin-bottom: 10px;">最常访问的合集:</h5>
+                    ${data.most_viewed_collections.length > 0 ? `
+                        <table style="width: 100%; background: white; border-radius: 4px;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left; padding: 8px; background: #f9f9f9;">合集名称</th>
+                                    <th style="text-align: right; padding: 8px; background: #f9f9f9;">访问次数</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.most_viewed_collections.map(col => `
+                                    <tr>
+                                        <td style="padding: 8px; border-top: 1px solid #e0e0e0;">${col.collection_name}</td>
+                                        <td style="padding: 8px; border-top: 1px solid #e0e0e0; text-align: right; font-weight: bold; color: #667eea;">${col.view_count}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    ` : '<p style="color: #999;">无访问记录</p>'}
+                </div>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+
+    } catch (error) {
+        console.error('加载用户活动统计失败:', error);
+        resultDiv.innerHTML = `<p style="color: red;">加载失败: ${error.message}</p>`;
+    }
+}
+
 function loadSettings() {
     document.getElementById('pageContent').innerHTML = '<h2>⚙️ 系统设置</h2><p>功能开发中...</p>';
 }
@@ -1875,6 +2025,7 @@ const routes = {
     'users': loadUsers,
     'user-stats': loadUserStats,
     'batch-vip': loadBatchVIP,
+    'analytics': loadAnalytics,
     'settings': loadSettings
 };
 

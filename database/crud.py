@@ -11,7 +11,7 @@ from datetime import datetime
 
 from .models import (
     User, Collection, Media, SessionAccount, TransferTask,
-    TaskLog, Setting, AdminLog, UserRole, AccessLevel, TaskStatus
+    TaskLog, Setting, AdminLog, UserActivity, UserRole, AccessLevel, TaskStatus
 )
 
 
@@ -723,3 +723,162 @@ async def get_admin_logs(
     logs = result.scalars().all()
 
     return logs, total
+
+
+# ==================== UserActivity CRUD ====================
+
+async def create_user_activity(
+    db: AsyncSession,
+    user_id: int,
+    activity_type: str,
+    collection_id: Optional[int] = None,
+    extra_data: Optional[Dict[str, Any]] = None
+) -> UserActivity:
+    """创建用户活动记录"""
+    activity = UserActivity(
+        user_id=user_id,
+        activity_type=activity_type,
+        collection_id=collection_id,
+        extra_data=extra_data or {},
+        created_at=datetime.now()
+    )
+    db.add(activity)
+    await db.commit()
+    await db.refresh(activity)
+    return activity
+
+
+async def get_user_activities(
+    db: AsyncSession,
+    user_id: int,
+    skip: int = 0,
+    limit: int = 50,
+    activity_type: Optional[str] = None
+) -> tuple[List[UserActivity], int]:
+    """获取用户活动记录"""
+    query = select(UserActivity).where(UserActivity.user_id == user_id)
+
+    if activity_type:
+        query = query.where(UserActivity.activity_type == activity_type)
+
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # 分页
+    query = query.offset(skip).limit(limit).order_by(UserActivity.created_at.desc())
+    result = await db.execute(query)
+    activities = result.scalars().all()
+
+    return activities, total or 0
+
+
+async def get_popular_collections(
+    db: AsyncSession,
+    limit: int = 10,
+    days: int = 30
+) -> List[Dict[str, Any]]:
+    """获取最受欢迎的合集（基于访问次数）"""
+    from datetime import timedelta
+
+    cutoff_date = datetime.now() - timedelta(days=days)
+
+    # 统计每个合集的访问次数
+    query = select(
+        UserActivity.collection_id,
+        func.count(UserActivity.id).label('view_count')
+    ).where(
+        UserActivity.activity_type == 'view_collection',
+        UserActivity.collection_id.isnot(None),
+        UserActivity.created_at >= cutoff_date
+    ).group_by(
+        UserActivity.collection_id
+    ).order_by(
+        func.count(UserActivity.id).desc()
+    ).limit(limit)
+
+    result = await db.execute(query)
+    stats = result.all()
+
+    # 获取合集详情
+    popular_collections = []
+    for collection_id, view_count in stats:
+        collection = await get_collection(db, collection_id)
+        if collection:
+            popular_collections.append({
+                'collection_id': collection_id,
+                'collection_name': collection.name,
+                'view_count': view_count,
+                'access_level': collection.access_level.value,
+                'media_count': collection.media_count
+            })
+
+    return popular_collections
+
+
+async def get_user_activity_stats(
+    db: AsyncSession,
+    user_id: int,
+    days: int = 30
+) -> Dict[str, Any]:
+    """获取用户活动统计"""
+    from datetime import timedelta
+
+    cutoff_date = datetime.now() - timedelta(days=days)
+
+    # 总活动次数
+    total_activities = await db.scalar(
+        select(func.count(UserActivity.id))
+        .where(
+            UserActivity.user_id == user_id,
+            UserActivity.created_at >= cutoff_date
+        )
+    )
+
+    # 按活动类型分组统计
+    activity_type_stats = await db.execute(
+        select(
+            UserActivity.activity_type,
+            func.count(UserActivity.id).label('count')
+        ).where(
+            UserActivity.user_id == user_id,
+            UserActivity.created_at >= cutoff_date
+        ).group_by(UserActivity.activity_type)
+    )
+
+    activity_by_type = {row[0]: row[1] for row in activity_type_stats.all()}
+
+    # 最常访问的合集
+    most_viewed_collections = await db.execute(
+        select(
+            UserActivity.collection_id,
+            func.count(UserActivity.id).label('count')
+        ).where(
+            UserActivity.user_id == user_id,
+            UserActivity.activity_type == 'view_collection',
+            UserActivity.collection_id.isnot(None),
+            UserActivity.created_at >= cutoff_date
+        ).group_by(
+            UserActivity.collection_id
+        ).order_by(
+            func.count(UserActivity.id).desc()
+        ).limit(5)
+    )
+
+    most_viewed = []
+    for collection_id, count in most_viewed_collections.all():
+        collection = await get_collection(db, collection_id)
+        if collection:
+            most_viewed.append({
+                'collection_id': collection_id,
+                'collection_name': collection.name,
+                'view_count': count
+            })
+
+    return {
+        'total_activities': total_activities or 0,
+        'activity_by_type': activity_by_type,
+        'most_viewed_collections': most_viewed,
+        'period_days': days
+    }
+

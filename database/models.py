@@ -50,12 +50,16 @@ class User(Base):
     last_name = Column(String(255))
     role = Column(SQLEnum(UserRole, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=UserRole.USER, nullable=False, index=True)
     is_banned = Column(Boolean, default=False, nullable=False)
+    banned_reason = Column(Text)  # 封禁原因
+    banned_at = Column(DateTime)  # 封禁时间
+    banned_by = Column(Integer, ForeignKey("users.id"))  # 封禁操作者
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     last_active_at = Column(DateTime, default=datetime.now, nullable=False)
 
     # 关系
     collections = relationship("Collection", back_populates="creator", foreign_keys="Collection.created_by")
     transfer_tasks = relationship("TransferTask", back_populates="creator", foreign_keys="TransferTask.created_by")
+    activities = relationship("UserActivity", back_populates="user", foreign_keys="UserActivity.user_id")
 
 
 class Collection(Base):
@@ -216,3 +220,27 @@ class AdminLog(Base):
         Index('idx_admin_logs_user', 'user_id', 'created_at'),
         Index('idx_admin_logs_action', 'action'),
     )
+
+
+class UserActivity(Base):
+    """用户活动记录表"""
+    __tablename__ = "user_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    activity_type = Column(String(50), nullable=False, index=True)  # view_collection, search, download
+    collection_id = Column(Integer, ForeignKey("collections.id", ondelete="SET NULL"))
+    extra_data = Column(JSON)  # 额外的元数据，如搜索关键词等
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+
+    # 关系
+    user = relationship("User", back_populates="activities", foreign_keys=[user_id])
+    collection = relationship("Collection", foreign_keys=[collection_id])
+
+    # 索引
+    __table_args__ = (
+        Index('idx_user_activities_user_time', 'user_id', 'created_at'),
+        Index('idx_user_activities_type', 'activity_type', 'created_at'),
+        Index('idx_user_activities_collection', 'collection_id', 'created_at'),
+    )
+

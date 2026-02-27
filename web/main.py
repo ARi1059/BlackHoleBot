@@ -22,7 +22,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from config import settings
-from web.api import auth, dashboard, collections, users, tasks, sessions, settings as settings_api
+from web.api import auth, dashboard, collections, users, tasks, sessions, settings as settings_api, analytics
 from web.websocket import websocket_endpoint
 from utils.transfer_executor import transfer_executor
 
@@ -91,6 +91,7 @@ app.include_router(users.router, prefix="/api/users", tags=["用户管理"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["搬运任务"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["Session管理"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["系统设置"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["数据分析"])
 
 # WebSocket
 app.add_websocket_route("/ws", websocket_endpoint)
