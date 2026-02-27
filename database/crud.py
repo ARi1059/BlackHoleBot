@@ -4,7 +4,8 @@
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func, or_
+from sqlalchemy import select, update, delete, func, or_, cast, Text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -376,12 +377,11 @@ async def search_collections(
         query = query.where(Collection.access_level == AccessLevel.PUBLIC)
 
     # 关键词搜索
-    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
     query = query.where(
         or_(
             Collection.name.ilike(f"%{keyword}%"),
             Collection.description.ilike(f"%{keyword}%"),
-            Collection.tags.op('@>')(f'{{{keyword}}}')  # PostgreSQL array contains operator
+            Collection.tags.op('@>')(cast([keyword], ARRAY(Text)))  # PostgreSQL array contains operator with proper type casting
         )
     )
 
