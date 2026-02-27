@@ -13,8 +13,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 import uvicorn
 import redis.asyncio as redis
+import logging
+
+logger = logging.getLogger(__name__)
 
 from config import settings
 from web.api import auth, dashboard, collections, users, tasks, sessions, settings as settings_api
@@ -27,6 +32,24 @@ app = FastAPI(
     description="BlackHoleBot 管理后台 API",
     version="1.0.0"
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    """捕获422验证错误并记录详细信息"""
+    logger.error(f"422 验证错误 - URL: {request.url}")
+    logger.error(f"请求方法: {request.method}")
+    logger.error(f"请求头: {request.headers}")
+    logger.error(f"验证错误详情: {exc.errors()}")
+    logger.error(f"请求体: {exc.body}")
+
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": exc.errors(),
+            "body": str(exc.body)
+        }
+    )
 
 
 @app.on_event("startup")
