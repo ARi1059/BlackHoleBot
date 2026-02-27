@@ -148,40 +148,39 @@ async def telegram_login(
     if not verify_telegram_auth(auth_dict.copy(), settings.BOT_TOKEN):
         raise HTTPException(status_code=401, detail="认证失败")
 
-    # 检查认证时间（防止重放攻击）
-    auth_time = datetime.fromtimestamp(auth_data.auth_date)
+    # 检查认证时间（防止重放攻击，统一使用 UTC 时间）
+    auth_time = datetime.utcfromtimestamp(auth_data.auth_date)
     if datetime.utcnow() - auth_time > timedelta(hours=1):
         raise HTTPException(status_code=401, detail="认证已过期")
 
-    # 获取用户
-    async for session in get_db():
-        user = await get_user_by_telegram_id(session, auth_data.id)
-        if not user:
-            raise HTTPException(status_code=403, detail="用户不存在")
+    # 获取用户（直接使用 FastAPI 依赖注入的 db session）
+    user = await get_user_by_telegram_id(db, auth_data.id)
+    if not user:
+        raise HTTPException(status_code=403, detail="用户不存在")
 
-        # 检查权限
-        if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-            raise HTTPException(status_code=403, detail="权限不足，仅管理员可访问")
+    # 检查权限
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(status_code=403, detail="权限不足，仅管理员可访问")
 
-        # 检查是否被封禁
-        if user.is_banned:
-            raise HTTPException(status_code=403, detail="账号已被封禁")
+    # 检查是否被封禁
+    if user.is_banned:
+        raise HTTPException(status_code=403, detail="账号已被封禁")
 
-        # 生成 token
-        token = create_access_token(
-            data={"user_id": user.id, "role": user.role.value}
-        )
+    # 生成 token
+    token = create_access_token(
+        data={"user_id": user.id, "role": user.role.value}
+    )
 
-        return TokenResponse(
-            access_token=token,
-            token_type="bearer",
-            user={
-                "id": user.telegram_id,
-                "username": user.username,
-                "first_name": user.first_name,
-                "role": user.role.value
-            }
-        )
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        user={
+            "id": user.telegram_id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "role": user.role.value
+        }
+    )
 
 
 @router.get("/me", response_model=UserInfo)
