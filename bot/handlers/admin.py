@@ -21,6 +21,7 @@ from database.crud import (
 )
 from bot.states import UploadStates, AddMediaStates
 from utils import generate_unique_deep_link_code, create_deep_link
+from utils.channel_sender import send_collection_to_channel
 from config import settings
 
 router = Router()
@@ -259,6 +260,9 @@ async def handle_access_permission(callback: CallbackQuery, user: User, db: Asyn
             }
         )
 
+        # 发送到私有频道
+        await send_collection_to_channel(callback.bot, media_list, collection.name)
+
         # 清除状态
         await state.clear()
 
@@ -454,6 +458,9 @@ async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db
                 "total_count": total_count
             }
         )
+
+        # 发送新增内容到私有频道
+        await send_collection_to_channel(message.bot, media_list, f"{collection_name} (新增)")
 
         # 清除状态
         await state.clear()

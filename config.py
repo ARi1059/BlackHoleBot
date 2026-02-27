@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # 合集配置
     MAX_MEDIA_PER_COLLECTION: int = 1000
     MEDIA_PER_PAGE: int = 10
+    PRIVATE_CHANNEL: Optional[int] = None  # 私有频道ID，用于发送合集内容
 
     # JWT 配置
     JWT_ALGORITHM: str = "HS256"

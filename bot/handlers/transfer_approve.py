@@ -23,6 +23,7 @@ from database.crud import (
 from database.models import TaskStatus
 from bot.states import ApproveTaskStates
 from utils.deep_link import generate_unique_deep_link_code, create_deep_link
+from utils.channel_sender import send_collection_to_channel
 from config import settings
 
 router = Router()
@@ -262,6 +263,9 @@ async def handle_approve_permission(callback: CallbackQuery, user: User, db: Asy
                 "access_level": access_level.value
             }
         )
+
+        # 发送到私有频道
+        await send_collection_to_channel(callback.bot, media_list, collection.name)
 
         # 清除状态
         await state.clear()
