@@ -474,11 +474,19 @@ async def callback_main_menu(callback: CallbackQuery, user: User, db: AsyncSessi
     is_admin = user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
     keyboard = create_main_menu_keyboard(is_admin=is_admin)
 
-    await callback.message.edit_text(
-        "👋 欢迎使用 BlackHoleBot！\n\n"
-        "请选择功能：",
-        reply_markup=keyboard
-    )
+    # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
+    if callback.message.photo or callback.message.video:
+        await callback.message.answer(
+            "👋 欢迎使用 BlackHoleBot！\n\n"
+            "请选择功能：",
+            reply_markup=keyboard
+        )
+    else:
+        await callback.message.edit_text(
+            "👋 欢迎使用 BlackHoleBot！\n\n"
+            "请选择功能：",
+            reply_markup=keyboard
+        )
     await callback.answer()
 
 
@@ -518,7 +526,11 @@ async def callback_hot_collections(callback: CallbackQuery, user: User, db: Asyn
 
     keyboard = create_search_results_keyboard(collections)
 
-    await callback.message.edit_text(result_text, reply_markup=keyboard)
+    # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
+    if callback.message.photo or callback.message.video:
+        await callback.message.answer(result_text, reply_markup=keyboard)
+    else:
+        await callback.message.edit_text(result_text, reply_markup=keyboard)
     await callback.answer()
 
 
@@ -534,7 +546,11 @@ async def show_browse_collections(message: Message, user: User, db: AsyncSession
     if not collections:
         text = "📦 暂无合集"
         if edit:
-            await message.edit_text(text)
+            # 判断消息类型
+            if message.photo or message.video:
+                await message.answer(text)
+            else:
+                await message.edit_text(text)
         else:
             await message.answer(text)
         return
@@ -546,7 +562,11 @@ async def show_browse_collections(message: Message, user: User, db: AsyncSession
     keyboard = create_browse_keyboard(collections, page, total_pages)
 
     if edit:
-        await message.edit_text(text, reply_markup=keyboard)
+        # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
+        if message.photo or message.video:
+            await message.answer(text, reply_markup=keyboard)
+        else:
+            await message.edit_text(text, reply_markup=keyboard)
     else:
         await message.answer(text, reply_markup=keyboard)
 
