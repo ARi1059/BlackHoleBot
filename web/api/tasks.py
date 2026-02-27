@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import json
 
-from database.connection import get_db
+from database.connection import get_db, redis_client
 from database.crud import (
     create_transfer_task,
     get_transfer_task,
@@ -31,7 +31,6 @@ from web.dependencies import require_admin
 from utils.task_queue import task_queue
 from utils.deep_link import generate_unique_deep_link_code
 from utils.channel_sender import send_collection_to_channel
-import redis.asyncio as redis
 from config import settings
 
 router = APIRouter()
@@ -210,7 +209,6 @@ async def approve_task(
         raise HTTPException(status_code=400, detail="只能审核已完成的任务")
 
     # 从 Redis 获取文件列表
-    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
     redis_key = f"task:{task_id}:files"
     file_data_list = await redis_client.lrange(redis_key, 0, -1)
 
@@ -260,7 +258,6 @@ async def approve_task(
 
     # 清空 Redis
     await redis_client.delete(redis_key)
-    await redis_client.close()
 
     # 记录日志
     await create_admin_log(

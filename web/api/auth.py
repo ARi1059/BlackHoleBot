@@ -79,6 +79,46 @@ def create_access_token(data: dict) -> str:
     )
 
 
+async def _validate_and_login(db: AsyncSession, telegram_id: int) -> TokenResponse:
+    """
+    验证用户权限并生成登录凭证（公共逻辑）
+
+    Args:
+        db: 数据库 session
+        telegram_id: 用户 Telegram ID
+
+    Returns:
+        TokenResponse
+
+    Raises:
+        HTTPException: 用户不存在、权限不足或已封禁
+    """
+    user = await get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=403, detail="用户不存在")
+
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(status_code=403, detail="权限不足，仅管理员可访问")
+
+    if user.is_banned:
+        raise HTTPException(status_code=403, detail="账号已被封禁")
+
+    token = create_access_token(
+        data={"user_id": user.id, "role": user.role.value}
+    )
+
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        user={
+            "id": user.telegram_id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "role": user.role.value
+        }
+    )
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login_with_code(
     login_data: LoginRequest,
@@ -116,34 +156,7 @@ async def login_with_code(
     await redis_client.delete(redis_key)
     await redis_client.delete(fail_key)
 
-    # 获取用户
-    user = await get_user_by_telegram_id(db, login_data.telegram_id)
-    if not user:
-        raise HTTPException(status_code=403, detail="用户不存在")
-
-    # 检查权限
-    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        raise HTTPException(status_code=403, detail="权限不足，仅管理员可访问")
-
-    # 检查是否被封禁
-    if user.is_banned:
-        raise HTTPException(status_code=403, detail="账号已被封禁")
-
-    # 生成 token
-    token = create_access_token(
-        data={"user_id": user.id, "role": user.role.value}
-    )
-
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        user={
-            "id": user.telegram_id,
-            "username": user.username,
-            "first_name": user.first_name,
-            "role": user.role.value
-        }
-    )
+    return await _validate_and_login(db, login_data.telegram_id)
 
 
 @router.post("/telegram", response_model=TokenResponse)
@@ -166,34 +179,7 @@ async def telegram_login(
     if datetime.utcnow() - auth_time > timedelta(hours=1):
         raise HTTPException(status_code=401, detail="认证已过期")
 
-    # 获取用户（直接使用 FastAPI 依赖注入的 db session）
-    user = await get_user_by_telegram_id(db, auth_data.id)
-    if not user:
-        raise HTTPException(status_code=403, detail="用户不存在")
-
-    # 检查权限
-    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        raise HTTPException(status_code=403, detail="权限不足，仅管理员可访问")
-
-    # 检查是否被封禁
-    if user.is_banned:
-        raise HTTPException(status_code=403, detail="账号已被封禁")
-
-    # 生成 token
-    token = create_access_token(
-        data={"user_id": user.id, "role": user.role.value}
-    )
-
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        user={
-            "id": user.telegram_id,
-            "username": user.username,
-            "first_name": user.first_name,
-            "role": user.role.value
-        }
-    )
+    return await _validate_and_login(db, auth_data.id)
 
 
 @router.get("/me", response_model=UserInfo)

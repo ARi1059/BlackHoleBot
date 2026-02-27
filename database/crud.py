@@ -249,31 +249,27 @@ async def get_user_statistics_data(db: AsyncSession) -> dict:
         .where(User.last_active_at >= now - timedelta(days=30))
     )
 
-    # 增长趋势 - 最近7天
-    growth_7d = []
-    for i in range(6, -1, -1):
-        date = (now - timedelta(days=i)).date()
-        count = await db.scalar(
-            select(func.count(User.id))
-            .where(func.date(User.created_at) == date)
+    # 增长趋势 - 一次查询最近30天，再拆分7天和30天
+    date_30d_ago = (now - timedelta(days=29)).date()
+    growth_result = await db.execute(
+        select(
+            func.date(User.created_at).label("reg_date"),
+            func.count(User.id).label("cnt")
         )
-        growth_7d.append({
-            "date": date.isoformat(),
-            "new_users": count or 0
-        })
+        .where(func.date(User.created_at) >= date_30d_ago)
+        .group_by(func.date(User.created_at))
+    )
+    growth_map = {row.reg_date: row.cnt for row in growth_result.all()}
 
-    # 增长趋势 - 最近30天
+    date_7d_ago = (now - timedelta(days=6)).date()
+    growth_7d = []
     growth_30d = []
     for i in range(29, -1, -1):
         date = (now - timedelta(days=i)).date()
-        count = await db.scalar(
-            select(func.count(User.id))
-            .where(func.date(User.created_at) == date)
-        )
-        growth_30d.append({
-            "date": date.isoformat(),
-            "new_users": count or 0
-        })
+        entry = {"date": date.isoformat(), "new_users": growth_map.get(date, 0)}
+        growth_30d.append(entry)
+        if date >= date_7d_ago:
+            growth_7d.append(entry)
 
     return {
         "role_distribution": role_distribution,
@@ -863,10 +859,20 @@ async def get_popular_collections(
     result = await db.execute(query)
     stats = result.all()
 
-    # 获取合集详情
+    if not stats:
+        return []
+
+    # 一次性查出所有合集（避免 N+1）
+    collection_ids = [cid for cid, _ in stats]
+    collections_result = await db.execute(
+        select(Collection).where(Collection.id.in_(collection_ids))
+    )
+    collections_map = {c.id: c for c in collections_result.scalars().all()}
+
+    # 组装结果
     popular_collections = []
     for collection_id, view_count in stats:
-        collection = await get_collection(db, collection_id)
+        collection = collections_map.get(collection_id)
         if collection:
             popular_collections.append({
                 'collection_id': collection_id,
@@ -929,14 +935,23 @@ async def get_user_activity_stats(
     )
 
     most_viewed = []
-    for collection_id, count in most_viewed_collections.all():
-        collection = await get_collection(db, collection_id)
-        if collection:
-            most_viewed.append({
-                'collection_id': collection_id,
-                'collection_name': collection.name,
-                'view_count': count
-            })
+    most_viewed_data = most_viewed_collections.all()
+    if most_viewed_data:
+        # 一次性查出所有合集（避免 N+1）
+        collection_ids = [cid for cid, _ in most_viewed_data]
+        collections_result = await db.execute(
+            select(Collection).where(Collection.id.in_(collection_ids))
+        )
+        collections_map = {c.id: c for c in collections_result.scalars().all()}
+
+        for collection_id, count in most_viewed_data:
+            collection = collections_map.get(collection_id)
+            if collection:
+                most_viewed.append({
+                    'collection_id': collection_id,
+                    'collection_name': collection.name,
+                    'view_count': count
+                })
 
     return {
         'total_activities': total_activities or 0,
