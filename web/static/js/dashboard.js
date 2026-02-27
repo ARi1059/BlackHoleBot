@@ -1533,14 +1533,14 @@ function showEditRoleModal(userId, currentRole) {
     const html = `
         <form onsubmit="updateUserRole(event, ${userId})">
             <div class="form-group">
-                <label>当前角色: <span class="role-badge role-${currentRole.toLowerCase()}">${getRoleDisplayName(currentRole)}</span></label>
+                <label>当前角色: <span class="role-badge role-${currentRole.toLowerCase()}">${getRoleDisplayName(currentRole.toUpperCase())}</span></label>
             </div>
             <div class="form-group">
                 <label for="newRole">新角色:</label>
                 <select id="newRole" required>
-                    <option value="USER" ${currentRole === 'USER' ? 'selected' : ''}>普通用户</option>
-                    <option value="VIP" ${currentRole === 'VIP' ? 'selected' : ''}>VIP</option>
-                    <option value="ADMIN" ${currentRole === 'ADMIN' ? 'selected' : ''}>管理员</option>
+                    <option value="user" ${currentRole === 'user' ? 'selected' : ''}>普通用户</option>
+                    <option value="vip" ${currentRole === 'vip' ? 'selected' : ''}>VIP</option>
+                    <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>管理员</option>
                 </select>
                 <small>注意: 普通管理员只能设置为普通用户或VIP</small>
             </div>
