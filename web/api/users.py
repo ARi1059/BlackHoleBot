@@ -11,6 +11,9 @@ from database.connection import get_db
 from database.crud import (
     get_users,
     get_user,
+    get_user_by_telegram_id,
+    get_user_with_statistics,
+    get_admin_users,
     update_user_role,
     ban_user,
     create_admin_log
@@ -19,6 +22,8 @@ from database.models import UserRole
 from web.schemas import (
     UserListResponse,
     UserResponse,
+    UserDetailResponse,
+    UserStatistics,
     UpdateRoleRequest,
     BanUserRequest,
     SuccessResponse
@@ -73,12 +78,15 @@ async def update_user_role_endpoint(
     user_id: int,
     request: UpdateRoleRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_super_admin)
+    current_user = Depends(require_admin)
 ):
     """
     修改用户角色
 
-    需要超级管理员权限
+    需要管理员权限
+    - ADMIN 可以修改 USER 和 VIP 的角色
+    - ADMIN 不能修改 ADMIN 和 SUPER_ADMIN 的角色
+    - SUPER_ADMIN 可以修改所有角色（除了自己）
     """
     user = await get_user(db, user_id)
     if not user:
@@ -93,6 +101,21 @@ async def update_user_role_endpoint(
     # 不能修改自己的角色
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="不能修改自己的角色")
+
+    # 权限检查：普通管理员的限制
+    if current_user.role == UserRole.ADMIN:
+        # 普通管理员只能修改普通用户和VIP
+        if user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=403,
+                detail="权限不足，无法修改管理员角色"
+            )
+        # 普通管理员不能将用户设置为管理员
+        if new_role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=403,
+                detail="权限不足，无法设置为管理员"
+            )
 
     # 更新角色
     success = await update_user_role(db, user_id, new_role)
@@ -154,3 +177,93 @@ async def ban_user_endpoint(
 
     message = "用户已封禁" if request.is_banned else "用户已解封"
     return SuccessResponse(message=message)
+
+
+@router.get("/{user_id}", response_model=UserDetailResponse)
+async def get_user_detail(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    """
+    获取用户详情
+
+    需要管理员权限
+    """
+    user_data = await get_user_with_statistics(db, user_id)
+    if not user_data:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    user = user_data["user"]
+    statistics = user_data["statistics"]
+
+    return UserDetailResponse(
+        id=user.id,
+        telegram_id=user.telegram_id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        role=user.role.value,
+        is_banned=user.is_banned,
+        created_at=user.created_at,
+        last_active_at=user.last_active_at,
+        statistics=UserStatistics(**statistics)
+    )
+
+
+@router.get("/by-telegram/{telegram_id}", response_model=UserDetailResponse)
+async def get_user_by_telegram_id_endpoint(
+    telegram_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    """
+    根据 Telegram ID 获取用户详情
+
+    需要管理员权限
+    """
+    user = await get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    # 获取统计信息
+    user_data = await get_user_with_statistics(db, user.id)
+    statistics = user_data["statistics"]
+
+    return UserDetailResponse(
+        id=user.id,
+        telegram_id=user.telegram_id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        role=user.role.value,
+        is_banned=user.is_banned,
+        created_at=user.created_at,
+        last_active_at=user.last_active_at,
+        statistics=UserStatistics(**statistics)
+    )
+
+
+@router.get("/admins/list", response_model=UserListResponse)
+async def list_admins(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    """
+    获取管理员列表
+
+    需要管理员权限
+    返回所有 ADMIN 和 SUPER_ADMIN 用户
+    """
+    skip = (page - 1) * limit
+
+    admins, total = await get_admin_users(db, skip=skip, limit=limit)
+
+    return UserListResponse(
+        users=[UserResponse.from_orm(admin) for admin in admins],
+        total=total,
+        page=page,
+        limit=limit
+    )

@@ -22,7 +22,8 @@ from bot.handlers import (
     admin_router,
     transfer_router,
     transfer_admin_router,
-    transfer_approve_router
+    transfer_approve_router,
+    user_management_router
 )
 from database.connection import init_db
 from utils.transfer_executor import transfer_executor
@@ -75,6 +76,7 @@ async def main():
     dp.include_router(transfer_router)
     dp.include_router(transfer_admin_router)
     dp.include_router(transfer_approve_router)
+    dp.include_router(user_management_router)
 
     # 将 redis_client 添加到 bot 数据中，供 handlers 使用
     dp["redis_client"] = redis_client

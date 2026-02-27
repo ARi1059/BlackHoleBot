@@ -112,6 +112,70 @@ async def get_users(
     return users, total
 
 
+async def get_user_with_statistics(db: AsyncSession, user_id: int) -> Optional[Dict[str, Any]]:
+    """获取用户详情及统计信息"""
+    user = await get_user(db, user_id)
+    if not user:
+        return None
+
+    # 统计创建的合集数量
+    collections_count = await db.scalar(
+        select(func.count(Collection.id)).where(Collection.created_by == user.id)
+    )
+
+    # 统计创建的搬运任务数量
+    tasks_count = await db.scalar(
+        select(func.count(TransferTask.id)).where(TransferTask.created_by == user.id)
+    )
+
+    # 统计上传的媒体总数
+    media_count = await db.scalar(
+        select(func.count(Media.id))
+        .select_from(Media)
+        .join(Collection, Media.collection_id == Collection.id)
+        .where(Collection.created_by == user.id)
+    )
+
+    return {
+        "user": user,
+        "statistics": {
+            "collections_created": collections_count or 0,
+            "transfer_tasks_created": tasks_count or 0,
+            "total_media_uploaded": media_count or 0
+        }
+    }
+
+
+async def get_admin_users(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20
+) -> tuple[List[User], int]:
+    """获取管理员列表"""
+    query = select(User).where(
+        User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN])
+    )
+
+    # 总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # 分页，按角色和创建时间排序
+    query = (
+        query
+        .order_by(
+            User.role.desc(),  # SUPER_ADMIN 在前
+            User.created_at.asc()
+        )
+        .offset(skip)
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    admins = result.scalars().all()
+
+    return admins, total
+
+
 # ==================== Collection CRUD ====================
 
 async def get_collection(db: AsyncSession, collection_id: int) -> Optional[Collection]:

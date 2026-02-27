@@ -140,6 +140,30 @@ class UserListResponse(BaseModel):
     limit: int
 
 
+class UserStatistics(BaseModel):
+    """用户统计信息"""
+    collections_created: int
+    transfer_tasks_created: int
+    total_media_uploaded: int
+
+
+class UserDetailResponse(BaseModel):
+    """用户详情响应"""
+    id: int
+    telegram_id: int
+    username: Optional[str]
+    first_name: Optional[str]
+    last_name: Optional[str]
+    role: str
+    is_banned: bool
+    created_at: datetime
+    last_active_at: datetime
+    statistics: UserStatistics
+
+    class Config:
+        from_attributes = True
+
+
 class UpdateRoleRequest(BaseModel):
     """更新角色请求"""
     role: str
