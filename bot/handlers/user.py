@@ -30,7 +30,7 @@ from bot.keyboards import (
     create_browse_keyboard,
     create_admin_panel_keyboard,
 )
-from bot.states import SearchStates
+from bot.states import SearchStates, UploadStates, AdminSettingsStates
 from utils import parse_start_parameter, calculate_total_pages
 from config import settings
 
@@ -588,62 +588,76 @@ async def callback_admin_panel(callback: CallbackQuery, user: User):
 
 
 @router.callback_query(F.data == "admin_upload")
-async def callback_admin_upload(callback: CallbackQuery):
-    """上传合集提示"""
-    await callback.message.answer(
-        "📤 上传新合集\n\n"
-        "请使用命令：/upload"
-    )
-    await callback.answer()
+async def callback_admin_upload(callback: CallbackQuery, user: User, state: FSMContext):
+    """开始上传合集流程"""
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        await callback.answer("❌ 权限不足", show_alert=True)
+        return
 
+    await state.clear()
 
-@router.callback_query(F.data == "admin_users")
-async def callback_admin_users(callback: CallbackQuery):
-    """用户管理提示"""
     await callback.message.answer(
-        "👥 用户管理\n\n"
-        "请使用命令：/users"
+        "📤 开始创建新合集\n\n"
+        "请发送媒体文件（图片或视频）\n"
+        "• 可以一次发送多个文件\n"
+        "• 支持媒体组（最多10个）\n"
+        "• 完成后发送 /done\n\n"
+        "💡 提示: 发送 /cancel 可随时取消"
     )
+
+    await state.set_state(UploadStates.waiting_for_media)
+    await state.update_data(media_list=[])
     await callback.answer()
 
 
 @router.callback_query(F.data == "admin_welcome")
-async def callback_admin_welcome(callback: CallbackQuery):
-    """设置欢迎消息提示"""
+async def callback_admin_welcome(callback: CallbackQuery, user: User, state: FSMContext, db: AsyncSession):
+    """开始设置欢迎消息流程"""
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        await callback.answer("❌ 权限不足", show_alert=True)
+        return
+
+    # 获取当前欢迎消息
+    current_message = await get_setting(db, "welcome_message")
+    if not current_message:
+        current_message = "（未设置）"
+
     await callback.message.answer(
-        "💬 设置欢迎消息\n\n"
-        "请使用命令：/set_welcome"
+        f"📝 <b>当前欢迎消息：</b>\n\n"
+        f"{current_message}\n\n"
+        f"━━━━━━━━━━━━━━━━\n\n"
+        f"请发送新的欢迎消息：\n"
+        f"• 支持文本（HTML 格式）\n"
+        f"• 支持图片/视频（可附带文字说明）\n"
+        f"• 支持按钮（使用 inline keyboard）\n\n"
+        f"发送 /cancel 取消设置",
+        parse_mode="HTML"
     )
+
+    await state.set_state(AdminSettingsStates.waiting_welcome_message)
     await callback.answer()
 
 
 @router.callback_query(F.data == "admin_broadcast")
-async def callback_admin_broadcast(callback: CallbackQuery):
-    """广播消息提示"""
+async def callback_admin_broadcast(callback: CallbackQuery, user: User, state: FSMContext):
+    """开始广播消息流程"""
+    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        await callback.answer("❌ 权限不足", show_alert=True)
+        return
+
+    await state.clear()
+
     await callback.message.answer(
-        "📢 广播消息\n\n"
-        "请使用命令：/broadcast"
+        "📢 <b>广播消息</b>\n\n"
+        "请发送要广播的消息：\n"
+        "• 支持文本（HTML 格式）\n"
+        "• 支持图片/视频（可附带文字说明）\n"
+        "• 支持按钮（使用 inline keyboard）\n\n"
+        "发送 /cancel 取消广播",
+        parse_mode="HTML"
     )
-    await callback.answer()
 
-
-@router.callback_query(F.data == "admin_transfer")
-async def callback_admin_transfer(callback: CallbackQuery):
-    """搬运任务提示"""
-    await callback.message.answer(
-        "🔄 搬运任务\n\n"
-        "请使用命令：/transfer"
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "admin_stats")
-async def callback_admin_stats(callback: CallbackQuery):
-    """系统统计提示"""
-    await callback.message.answer(
-        "📊 系统统计\n\n"
-        "请使用命令：/stats"
-    )
+    await state.set_state(AdminSettingsStates.waiting_broadcast_message)
     await callback.answer()
 
 

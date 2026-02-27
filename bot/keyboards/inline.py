@@ -225,22 +225,15 @@ def create_admin_panel_keyboard() -> InlineKeyboardMarkup:
     """
     builder = InlineKeyboardBuilder()
 
-    # 第一行：上传合集、用户管理
+    # 第一行：上传合集
     builder.row(
-        InlineKeyboardButton(text="📤 上传合集", callback_data="admin_upload"),
-        InlineKeyboardButton(text="👥 用户管理", callback_data="admin_users")
+        InlineKeyboardButton(text="📤 上传合集", callback_data="admin_upload")
     )
 
     # 第二行：设置欢迎消息、广播消息
     builder.row(
         InlineKeyboardButton(text="💬 设置欢迎消息", callback_data="admin_welcome"),
         InlineKeyboardButton(text="📢 广播消息", callback_data="admin_broadcast")
-    )
-
-    # 第三行：搬运任务、系统统计
-    builder.row(
-        InlineKeyboardButton(text="🔄 搬运任务", callback_data="admin_transfer"),
-        InlineKeyboardButton(text="📊 系统统计", callback_data="admin_stats")
     )
 
     # 返回主菜单
