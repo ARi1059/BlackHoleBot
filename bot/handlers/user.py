@@ -488,21 +488,113 @@ async def callback_view_collection(callback: CallbackQuery, user: User, db: Asyn
 async def callback_main_menu(callback: CallbackQuery, user: User, db: AsyncSession):
     """返回主菜单"""
     is_admin = user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
-    keyboard = create_main_menu_keyboard(is_admin=is_admin)
 
-    # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
-    if callback.message.photo or callback.message.video:
-        await callback.message.answer(
-            "👋 欢迎使用 BlackHoleBot！\n\n"
-            "请选择功能：",
-            reply_markup=keyboard
+    # 管理员显示专门的管理员界面
+    if is_admin:
+        admin_message = (
+            "⚙️ 管理员控制台\n\n"
+            f"👤 管理员：{user.username or user.telegram_id}\n"
+            f"🔐 权限等级：{user.role.value}\n\n"
+            "请选择功能："
         )
-    else:
-        await callback.message.edit_text(
+        keyboard = create_main_menu_keyboard(is_admin=True)
+
+        # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
+        if callback.message.photo or callback.message.video:
+            await callback.message.answer(admin_message, reply_markup=keyboard)
+        else:
+            await callback.message.edit_text(admin_message, reply_markup=keyboard)
+        await callback.answer()
+        return
+
+    # 普通用户显示自定义欢迎消息
+    import json
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    welcome_message = await get_setting(db, "welcome_message")
+
+    if not welcome_message:
+        # 默认欢迎消息
+        default_message = (
             "👋 欢迎使用 BlackHoleBot！\n\n"
-            "请选择功能：",
-            reply_markup=keyboard
+            "🎯 功能介绍:\n"
+            "• 📦 浏览海量媒体合集\n"
+            "• 🔍 快速搜索感兴趣的内容\n"
+            "• 💎 VIP 用户专享高质量资源\n\n"
+            "请选择功能："
         )
+        keyboard = create_main_menu_keyboard(is_admin=False)
+
+        # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
+        if callback.message.photo or callback.message.video:
+            await callback.message.answer(default_message, reply_markup=keyboard)
+        else:
+            await callback.message.edit_text(default_message, reply_markup=keyboard)
+        await callback.answer()
+        return
+
+    # 尝试解析 JSON 格式的欢迎消息
+    try:
+        message_data = json.loads(welcome_message)
+
+        # 构建键盘：自定义按钮 + 默认主菜单按钮
+        builder = InlineKeyboardBuilder()
+
+        # 添加自定义按钮（如果有）
+        if message_data.get('reply_markup'):
+            custom_markup = InlineKeyboardMarkup.model_validate(message_data['reply_markup'])
+            for row in custom_markup.inline_keyboard:
+                builder.row(*row)
+
+        # 添加默认主菜单按钮（始终显示）
+        builder.row(
+            InlineKeyboardButton(text="📦 浏览合集", callback_data="browse_collections"),
+            InlineKeyboardButton(text="🔥 热门合集", callback_data="hot_collections")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔍 搜索合集", callback_data="search")
+        )
+
+        reply_markup = builder.as_markup()
+
+        # 删除旧消息，发送新的欢迎消息
+        try:
+            await callback.message.delete()
+        except:
+            pass
+
+        # 根据消息类型发送
+        if message_data['type'] == 'text':
+            await callback.message.answer(
+                text=message_data['text'],
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+        elif message_data['type'] == 'photo':
+            await callback.message.answer_photo(
+                photo=message_data['file_id'],
+                caption=message_data.get('caption'),
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+        elif message_data['type'] == 'video':
+            await callback.message.answer_video(
+                video=message_data['file_id'],
+                caption=message_data.get('caption'),
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+    except (json.JSONDecodeError, KeyError):
+        # 如果不是 JSON 格式，按纯文本处理（兼容旧格式）
+        keyboard = create_main_menu_keyboard(is_admin=False)
+
+        # 判断消息类型，如果是媒体消息则发送新消息，否则编辑
+        if callback.message.photo or callback.message.video:
+            await callback.message.answer(welcome_message, reply_markup=keyboard)
+        else:
+            await callback.message.edit_text(welcome_message, reply_markup=keyboard)
+
     await callback.answer()
 
 
