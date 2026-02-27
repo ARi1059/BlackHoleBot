@@ -1,220 +1,261 @@
-# BlackHoleBot - Telegram 媒体搬运与管理系统
+# BlackHoleBot
 
-BlackHoleBot 是一个功能强大的 Telegram Bot，用于自动搬运频道媒体文件、创建媒体合集，并通过深链接分享。
+一个功能强大的 Telegram 媒体收藏管理系统，支持自动搬运频道内容、创建媒体合集并通过深度链接分享。
 
-## 主要功能
+## 核心功能
 
-### 1. 管理员上传功能
-- 手动创建媒体合集
-- 上传图片/视频
-- 设置合集信息（名称、描述、标签）
-- 配置访问权限（公开/VIP）
-- 生成深链接分享
+### 管理员功能
+- **手动上传合集** - 直接通过 Telegram 上传图片/视频创建合集
+- **自动搬运系统** - 使用多账号从频道批量转存媒体
+- **智能限流控制** - 三层限流机制，自动切换账号
+- **Web 管理后台** - 可视化管理界面，实时监控任务进度
 
-### 2. 搬运系统
-- 多账号管理（Telethon Session）
-- 自动从频道/群组批量转发媒体
-- 智能限流控制（三种限流机制）
-- 任务队列管理（确保单任务执行）
-- 过滤条件（媒体类型、关键词、日期范围）
-- 任务审核与确认
-
-### 3. 用户端功能
-- 通过深链接访问合集
-- 分页浏览媒体
-- 搜索合集
-- VIP 权限控制
+### 用户功能
+- **深度链接访问** - 通过唯一链接快速访问合集
+- **分页浏览** - 流畅的媒体浏览体验
+- **搜索功能** - 快速查找感兴趣的合集
+- **VIP 权限** - 支持公开/VIP 两级访问控制
 
 ## 技术栈
 
-- **Bot 框架**: aiogram 3.3.0
+- **Bot 框架**: aiogram 3.15.0
 - **Telegram 客户端**: Telethon 1.34.0
-- **数据库**: PostgreSQL + SQLAlchemy 2.0
-- **缓存**: Redis 7+
 - **Web 框架**: FastAPI
-- **加密**: cryptography (Fernet)
+- **数据库**: PostgreSQL + SQLAlchemy (异步)
+- **缓存**: Redis
+- **认证**: JWT + Telegram Login Widget
 
-## 安装步骤
+## 快速开始
 
-### 1. 克隆项目
+### 使用 Docker (推荐)
 
 ```bash
+# 1. 克隆项目
 git clone https://github.com/yourusername/BlackHoleBot.git
 cd BlackHoleBot
-```
 
-### 2. 安装依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. 配置环境变量
-
-复制 `.env.example` 为 `.env` 并填写配置：
-
-```bash
+# 2. 配置环境变量
 cp .env.example .env
+nano .env  # 填写必要配置
+
+# 3. 启动服务
+docker-compose up -d
+
+# 4. 初始化数据库
+docker-compose exec bot alembic upgrade head
+
+# 5. 创建管理员
+docker-compose exec bot python scripts/create_admin.py
 ```
 
-编辑 `.env` 文件：
+### 手动安装
 
-```env
-# Bot 配置
-BOT_TOKEN=your_bot_token_from_botfather
-BOT_USERNAME=your_bot_username
-
-# 数据库配置
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/blackholebot
-
-# Redis 配置
-REDIS_URL=redis://localhost:6379/0
-
-# 安全配置（生成加密密钥）
-SESSION_ENCRYPTION_KEY=your_fernet_key
-SECRET_KEY=your_secret_key
-```
-
-生成加密密钥：
-
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-### 4. 初始化数据库
-
-```bash
-# 创建数据库
-createdb blackholebot
-
-# 运行迁移
-alembic upgrade head
-
-# 创建管理员账号
-python scripts/create_admin.py
-```
-
-### 5. 启动服务
-
-```bash
-# 启动 Bot
-python bot/main.py
-
-# 启动 Web 后台（另一个终端）
-python web/main.py
-```
-
-## 使用指南
-
-### 管理员命令
-
-#### 上传合集
-```
-/upload - 开始创建新合集
-/add_media {code} - 添加媒体到现有合集
-/edit_collection {code} - 编辑合集信息
-/delete_collection {code} - 删除合集
-/list_collections - 查看所有合集
-```
-
-#### 搬运任务
-```
-/create_transfer - 创建搬运任务
-/list_tasks - 查看任务列表
-/task_info {task_id} - 查看任务详情
-/pause_task {task_id} - 暂停任务
-/resume_task {task_id} - 恢复任务
-/approve_task {task_id} - 审核任务并创建合集
-/reject_task {task_id} - 拒绝任务
-```
-
-### 用户命令
-```
-/start - 启动 Bot
-/start {code} - 通过深链接访问合集
-/search {keyword} - 搜索合集
-```
-
-## 搬运系统工作流程
-
-1. **创建任务**: 管理员通过 `/create_transfer` 创建搬运任务
-2. **任务执行**: 系统自动选择可用 Session 账号执行任务
-3. **文件转发**: Telethon 客户端从源频道转发文件到 Bot
-4. **Bot 接收**: Bot 接收文件并提取 file_id 存入 Redis
-5. **限流控制**:
-   - Session 限流：每 500 个文件冷却 3 分钟
-   - API 限流：自动切换 Session 账号
-   - Bot 限流：暂停转发，等待恢复
-6. **任务完成**: 文件存储在 Redis 中，等待审核
-7. **审核确认**: 管理员审核任务，填写合集信息
-8. **创建合集**: 从 Redis 读取文件，批量插入数据库，生成深链接
-
-## 限流控制机制
-
-### 1. Session 账号限流（500 文件/周期）
-- 每个 Session 转发 500 个文件后自动冷却 3 分钟
-- 冷却期间自动切换到下一个可用 Session
-
-### 2. API ID/Hash 限流
-- 检测到 `FloodWaitError` 时自动切换 Session
-- 被限流的 Session 进入冷却状态
-
-### 3. Bot API 限流
-- 检测到 `TelegramRetryAfter` 时暂停转发
-- 等待已转发文件的 file_id 全部获取完成
-- 限流结束后自动恢复转发
+详见 [DEPLOYMENT.md](DEPLOYMENT.md) 获取完整的 Debian 12 部署指南。
 
 ## 项目结构
 
 ```
 BlackHoleBot/
-├── bot/                    # Bot 相关代码
+├── bot/                    # Telegram Bot 应用
 │   ├── handlers/          # 命令处理器
-│   │   ├── user.py       # 用户命令
-│   │   ├── admin.py      # 管理员命令
-│   │   ├── transfer.py   # 文件接收
-│   │   ├── transfer_admin.py    # 搬运任务管理
-│   │   └── transfer_approve.py  # 任务审核
 │   ├── middlewares/       # 中间件
 │   ├── keyboards/         # 键盘布局
-│   ├── states.py         # FSM 状态
-│   └── main.py           # Bot 主程序
-├── database/              # 数据库相关
-│   ├── models.py         # 数据模型
-│   ├── crud.py           # CRUD 操作
-│   └── connection.py     # 数据库连接
-├── utils/                 # 工具模块
-│   ├── session_manager.py      # Session 管理
-│   ├── task_queue.py          # 任务队列
-│   ├── rate_limiter.py        # 限流控制
-│   ├── transfer_executor.py   # 任务执行器
-│   ├── encryption.py          # 加密工具
-│   └── deep_link.py          # 深链接生成
-├── web/                   # Web 后台
-├── scripts/               # 脚本工具
-├── docs/                  # 文档
-├── alembic/              # 数据库迁移
-├── config.py             # 配置文件
-├── requirements.txt      # 依赖列表
-└── .env.example         # 环境变量示例
+│   └── main.py           # Bot 入口
+├── web/                   # Web 管理后台
+│   ├── api/              # REST API
+│   └── main.py           # Web 入口
+├── database/             # 数据库层
+│   ├── models.py        # 数据模型
+│   └── crud.py          # CRUD 操作
+├── utils/                # 工具模块
+│   ├── transfer_executor.py   # 搬运执行器
+│   ├── session_manager.py     # Session 管理
+│   └── rate_limiter.py        # 限流控制
+├── scripts/              # 工具脚本
+├── alembic/             # 数据库迁移
+└── docs/                # 项目文档
 ```
 
-## 开发文档
+## 管理员命令
 
-详细文档请查看 `docs/` 目录：
+### 合集管理
+```
+/upload                    - 创建新合集
+/add_media {code}         - 添加媒体到现有合集
+/edit_collection {code}   - 编辑合集信息
+/delete_collection {code} - 删除合集
+/list_collections         - 查看所有合集
+```
 
-- [数据库设计](docs/01-数据库设计.md)
-- [用户端功能](docs/02-用户端功能.md)
-- [管理员上传功能](docs/03-管理员上传功能.md)
-- [搬运系统](docs/04-搬运系统.md)
-- [权限管理](docs/05-权限管理.md)
-- [Web 后台](docs/06-Web后台.md)
-- [部署配置](docs/07-部署配置.md)
+### 搬运任务
+```
+/create_transfer          - 创建搬运任务
+/list_tasks              - 查看任务列表
+/task_info {task_id}     - 查看任务详情
+/approve_task {task_id}  - 审核并创建合集
+/pause_task {task_id}    - 暂停任务
+/resume_task {task_id}   - 恢复任务
+```
+
+### 用户管理
+```
+/ban_user {user_id}      - 封禁用户
+/unban_user {user_id}    - 解封用户
+/set_vip {user_id}       - 设置 VIP
+/user_info {user_id}     - 查看用户信息
+```
+
+## 搬运系统特性
+
+### 三层限流机制
+
+1. **Session 级别限流**
+   - 每个账号 500 文件/周期
+   - 自动冷却 3 分钟
+   - 自动切换到下一个可用账号
+
+2. **API 级别限流**
+   - 检测 FloodWaitError
+   - 智能切换 Session
+   - 记录冷却时间
+
+3. **Bot 级别限流**
+   - 检测 TelegramRetryAfter
+   - 暂停转发等待恢复
+   - 确保数据完整性
+
+### 多账号管理
+
+- 支持添加多个 Telethon Session 账号
+- 优先级调度系统
+- 自动健康检查
+- Session 加密存储
+
+## 配置说明
+
+主要环境变量：
+
+```env
+# Bot 配置
+BOT_TOKEN=              # 从 @BotFather 获取
+BOT_USERNAME=           # Bot 用户名
+
+# 数据库
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost/dbname
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# 安全密钥（使用下面命令生成）
+SESSION_ENCRYPTION_KEY= # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+SECRET_KEY=            # python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# 可选配置
+PRIVATE_CHANNEL=       # 私有频道 ID，自动发送合集
+WEB_DOMAIN=           # Web 后台域名
+```
+
+## 文档
+
+- [部署指南](DEPLOYMENT.md) - Debian 12 完整部署教程
+- [数据库设计](docs/01-数据库设计.md) - 数据表结构说明
+- [搬运系统](docs/04-搬运系统.md) - 搬运系统详细说明
+- [Web 后台](docs/06-Web后台.md) - Web API 文档
+
+## 常见问题
+
+**Q: Bot 无法启动？**
+- 检查 BOT_TOKEN 是否正确
+- 确认数据库和 Redis 正常运行
+- 查看日志：`docker-compose logs bot`
+
+**Q: 搬运任务一直 pending？**
+- 确认已添加 Session 账号
+- 检查账号是否有效：`/list_sessions`（Web 后台）
+- 查看任务日志：`/task_info {task_id}`
+
+**Q: 如何添加 Session 账号？**
+```bash
+docker-compose exec bot python scripts/add_session.py
+# 或通过 Web 后台的 Session 管理页面
+```
+
+**Q: 如何备份数据？**
+```bash
+# 备份数据库
+docker-compose exec postgres pg_dump -U user dbname > backup.sql
+
+# 备份配置
+cp .env .env.backup
+```
+
+## 安全建议
+
+1. **定期更新依赖**
+   ```bash
+   pip list --outdated
+   pip install --upgrade -r requirements.txt
+   ```
+
+2. **使用强密码**
+   - 数据库密码至少 16 位
+   - Redis 设置密码保护
+   - 定期轮换密钥
+
+3. **防火墙配置**
+   ```bash
+   ufw allow 22/tcp   # SSH
+   ufw allow 80/tcp   # HTTP
+   ufw allow 443/tcp  # HTTPS
+   ufw enable
+   ```
+
+4. **定期备份**
+   - 每天自动备份数据库
+   - 保留最近 7 天备份
+   - 异地存储重要备份
+
+## 监控与维护
+
+### 查看日志
+```bash
+# Docker 方式
+docker-compose logs -f bot
+docker-compose logs -f web
+
+# Systemd 方式
+journalctl -u blackholebot -f
+journalctl -u blackholebot-web -f
+```
+
+### 性能监控
+```bash
+# 查看资源使用
+docker stats
+
+# 数据库连接数
+docker-compose exec postgres psql -U user -c "SELECT count(*) FROM pg_stat_activity;"
+
+# Redis 内存使用
+docker-compose exec redis redis-cli INFO memory
+```
 
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
+1. Fork 项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
 ## 许可证
 
 MIT License
+
+## 致谢
+
+- [aiogram](https://github.com/aiogram/aiogram) - 优秀的 Telegram Bot 框架
+- [Telethon](https://github.com/LonamiWebs/Telethon) - 强大的 Telegram 客户端库
+- [FastAPI](https://github.com/tiangolo/fastapi) - 现代化的 Web 框架
