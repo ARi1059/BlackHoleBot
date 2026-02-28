@@ -4,6 +4,7 @@
 """
 
 import json
+import logging
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.exceptions import TelegramRetryAfter
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from utils.rate_limiter import bot_rate_limiter
 from utils.task_queue import task_queue
 
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -23,16 +25,13 @@ async def receive_transferred_media(message: Message, redis_client):
 
     当 Telethon 客户端转发文件到 Bot 时，Bot 接收并提取 file_id
     """
-    print(f"[DEBUG] Bot 接收到转发消息: message_id={message.message_id}")
-
     # 从 Redis 获取当前正在执行的任务 ID
     task_id_str = await redis_client.get("current_transfer_task_id")
     task_id = int(task_id_str) if task_id_str else None
-    print(f"[DEBUG] 当前任务 ID (from Redis): {task_id}")
 
     if not task_id:
         # 没有正在执行的任务，忽略
-        print(f"[DEBUG] 没有正在执行的任务，忽略此消息")
+        logger.debug(f"收到转发消息 message_id={message.message_id}，但无活跃任务，忽略")
         return
 
     # 标记为 pending
@@ -50,7 +49,7 @@ async def receive_transferred_media(message: Message, redis_client):
                 "file_size": message.photo[-1].file_size,
                 "caption": getattr(message, 'caption', None)
             }
-            print(f"[DEBUG] 提取照片数据: {file_data['file_id']}")
+            logger.debug(f"[任务 {task_id}] 提取照片 file_id: {file_data['file_unique_id']}")
         elif message.video:
             file_data = {
                 "file_id": message.video.file_id,
@@ -59,30 +58,31 @@ async def receive_transferred_media(message: Message, redis_client):
                 "file_size": message.video.file_size,
                 "caption": getattr(message, 'caption', None)
             }
-            print(f"[DEBUG] 提取视频数据: {file_data['file_id']}")
+            logger.debug(f"[任务 {task_id}] 提取视频 file_id: {file_data['file_unique_id']}")
 
         if not file_data:
-            print(f"[DEBUG] 消息不包含照片或视频，跳过")
+            logger.debug(f"[任务 {task_id}] 转发消息 message_id={message.message_id} 不含媒体，跳过")
             return
 
         # 存入 Redis
         redis_key = f"task:{task_id}:files"
         await redis_client.rpush(redis_key, json.dumps(file_data))
-        print(f"[DEBUG] 已存储到 Redis: {redis_key}")
 
         # 设置过期时间（24 小时）
         await redis_client.expire(redis_key, 86400)
-        print(f"[DEBUG] 设置过期时间: 24 小时")
+
+        logger.debug(f"[任务 {task_id}] 文件已存入 Redis: {file_data['file_type']}, key={redis_key}")
 
     except TelegramRetryAfter as e:
         # Bot API 限流
+        logger.warning(f"[任务 {task_id}] Bot 接收文件时触发限流, retry_after={e.retry_after}s")
         from database.connection import get_db
         async for db in get_db():
             await bot_rate_limiter.handle_rate_limit(db, task_id, e.retry_after)
             break
 
     except Exception as e:
-        print(f"Error receiving transferred media: {str(e)}")
+        logger.error(f"[任务 {task_id}] 接收转发媒体异常: {str(e)}", exc_info=True)
 
     finally:
         # 移除 pending 标记

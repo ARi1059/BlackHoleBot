@@ -3,6 +3,7 @@
 搬运任务管理命令处理器（管理员）
 """
 
+import logging
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -21,6 +22,8 @@ from database.models import TaskStatus
 from bot.states import TransferTaskStates
 from utils.task_queue import task_queue
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -48,6 +51,8 @@ async def cmd_create_transfer(message: Message, user: User, state: FSMContext):
     命令: /create_transfer
     """
     await state.clear()
+
+    logger.info(f"管理员 {user.id} 开始创建搬运任务")
 
     await message.answer(
         "📥 创建搬运任务\n\n"
@@ -169,6 +174,12 @@ async def handle_task_name(message: Message, user: User, db: AsyncSession, state
 
         await state.clear()
 
+        logger.info(
+            f"管理员 {user.id} 创建搬运任务成功: task_id={task.id}, "
+            f"name={task_name}, source={data.get('source_chat_username') or data.get('source_chat_id')}, "
+            f"filter_type={data.get('filter_type', 'all')}"
+        )
+
         # 显示任务信息
         filter_type_text = {
             "photo": "📷 仅图片",
@@ -190,6 +201,7 @@ async def handle_task_name(message: Message, user: User, db: AsyncSession, state
         )
 
     except Exception as e:
+        logger.error(f"管理员 {user.id} 创建搬运任务失败: {str(e)}", exc_info=True)
         await message.answer(f"❌ 创建任务失败: {str(e)}")
 
 
@@ -356,6 +368,7 @@ async def cmd_pause_task(message: Message, user: User, db: AsyncSession):
         return
 
     await update_transfer_task(db, task_id, status=TaskStatus.PAUSED)
+    logger.info(f"管理员 {user.id} 暂停任务 {task_id}")
     await message.answer(f"✅ 任务 {task_id} 已暂停")
 
 
@@ -392,4 +405,5 @@ async def cmd_resume_task(message: Message, user: User, db: AsyncSession):
 
     # 重新加入队列
     await task_queue.add_task(task_id)
+    logger.info(f"管理员 {user.id} 恢复任务 {task_id}")
     await message.answer(f"✅ 任务 {task_id} 已恢复，重新加入队列")

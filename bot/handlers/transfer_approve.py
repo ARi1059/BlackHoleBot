@@ -4,6 +4,7 @@
 """
 
 import json
+import logging
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -25,6 +26,8 @@ from bot.states import ApproveTaskStates
 from utils.deep_link import generate_unique_deep_link_code, create_deep_link
 from utils.channel_sender import send_collection_to_channel
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -205,11 +208,13 @@ async def handle_approve_permission(callback: CallbackQuery, user: User, db: Asy
         file_data_list = await redis_client.lrange(redis_key, 0, -1)
 
         if not file_data_list:
+            logger.warning(f"[任务 {task_id}] 审核时 Redis 中无文件数据")
             await callback.message.answer("❌ 没有找到文件数据")
             await callback.answer("❌ 创建失败", show_alert=True)
             return
 
         media_list = [json.loads(data_str) for data_str in file_data_list]
+        logger.info(f"管理员 {user.id} 审核通过任务 {task_id}，文件数: {len(media_list)}, 权限: {access_level.value}")
 
         # 生成深链接码
         deep_link_code = await generate_unique_deep_link_code(db)
@@ -270,6 +275,11 @@ async def handle_approve_permission(callback: CallbackQuery, user: User, db: Asy
         # 清除状态
         await state.clear()
 
+        logger.info(
+            f"[任务 {task_id}] 合集创建成功: collection_id={collection.id}, "
+            f"name={collection.name}, media_count={len(media_list)}, deep_link={deep_link_code}"
+        )
+
         # 发送成功消息
         access_emoji = "🌍" if access_level == AccessLevel.PUBLIC else "💎"
         deep_link = create_deep_link(settings.BOT_USERNAME, deep_link_code)
@@ -286,6 +296,7 @@ async def handle_approve_permission(callback: CallbackQuery, user: User, db: Asy
         await callback.answer("✅ 合集创建成功")
 
     except Exception as e:
+        logger.error(f"[任务 {task_id}] 审核创建合集失败: {str(e)}", exc_info=True)
         await callback.message.answer(f"❌ 创建失败: {str(e)}")
         await callback.answer("❌ 创建失败", show_alert=True)
 
@@ -344,4 +355,5 @@ async def cmd_reject_task(message: Message, user: User, db: AsyncSession, redis_
         details={"task_id": task_id}
     )
 
+    logger.info(f"管理员 {user.id} 拒绝任务 {task_id}，Redis 文件数据已清理")
     await message.answer(f"✅ 任务 {task_id} 已拒绝，文件已清理")

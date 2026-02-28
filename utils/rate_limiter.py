@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import logging
 from typing import Optional, Set
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,8 @@ from database.crud import (
 )
 from database.models import TaskStatus
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class SessionRateLimiter:
@@ -44,6 +47,7 @@ class SessionRateLimiter:
         """
         session = await get_session_account(db, session_id)
         if not session:
+            logger.warning(f"[任务 {task_id}] Session {session_id} 不存在，触发冷却")
             return True
 
         # 检查是否达到限制
@@ -59,6 +63,11 @@ class SessionRateLimiter:
                 transfer_count=0
             )
 
+            logger.info(
+                f"[任务 {task_id}] Session {session_id} 达到转发限制 "
+                f"({self.transfer_limit} 文件)，进入冷却 {self.cooldown_minutes} 分钟"
+            )
+
             # 记录日志
             await create_task_log(
                 db,
@@ -70,13 +79,17 @@ class SessionRateLimiter:
             return True
 
         # 增加计数
+        new_count = session.transfer_count + 1
         await update_session_account(
             db,
             session_id,
-            transfer_count=session.transfer_count + 1,
+            transfer_count=new_count,
             last_transfer_time=datetime.now(),
             last_used_at=datetime.now()
         )
+
+        if new_count % 100 == 0:
+            logger.info(f"[任务 {task_id}] Session {session_id} 已转发 {new_count}/{self.transfer_limit} 文件")
 
         return False
 
@@ -105,6 +118,7 @@ class BotRateLimiter:
         """
         self.is_limited = True
         self.current_task_id = task_id
+        logger.warning(f"[任务 {task_id}] Bot API 限流触发，需等待 {retry_after} 秒")
 
         # 更新任务状态
         await update_transfer_task(
@@ -124,9 +138,15 @@ class BotRateLimiter:
         # 等待所有 pending 的 file_id 获取完成
         max_wait = 60  # 最多等待 60 秒
         waited = 0
+        pending_count = len(self.pending_file_ids)
+        if pending_count > 0:
+            logger.info(f"[任务 {task_id}] 等待 {pending_count} 个 pending 文件处理完成")
         while self.pending_file_ids and waited < max_wait:
             await asyncio.sleep(0.5)
             waited += 0.5
+
+        if waited >= max_wait and self.pending_file_ids:
+            logger.warning(f"[任务 {task_id}] 等待 pending 文件超时，仍有 {len(self.pending_file_ids)} 个未完成")
 
         # 记录日志
         await create_task_log(
@@ -136,6 +156,7 @@ class BotRateLimiter:
             f"✅ 限流前文件已全部存储，等待 Bot API 恢复（{retry_after} 秒）"
         )
 
+        logger.info(f"[任务 {task_id}] 开始等待 Bot API 限流恢复，{retry_after} 秒")
         # 等待限流时间
         await asyncio.sleep(retry_after)
 
@@ -152,6 +173,7 @@ class BotRateLimiter:
         """
         self.is_limited = False
         self.current_task_id = None
+        logger.info(f"[任务 {task_id}] Bot API 限流已恢复，继续执行")
 
         # 更新任务状态
         await update_transfer_task(

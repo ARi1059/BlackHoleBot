@@ -6,7 +6,6 @@
 import asyncio
 import json
 import logging
-import sys
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from telethon.errors import FloodWaitError, ChannelPrivateError, ChatAdminRequiredError
@@ -27,28 +26,6 @@ from config import settings
 
 # 配置日志
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-logger.propagate = True  # 确保日志传播到父 logger
-
-# 强制添加处理器
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(console_formatter)
-
-file_handler = logging.FileHandler('transfer_executor.log', encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(console_formatter)
-
-# 清除现有处理器，重新添加
-logger.handlers.clear()
-logger.addHandler(console_handler)
-logger.addHandler(file_handler)
-
-# 测试日志 - 模块加载时打印
-logger.info("=" * 80)
-logger.info("transfer_executor 模块已加载，日志系统已初始化 - VERSION 3.3")
-logger.info("=" * 80)
 
 
 class TransferExecutor:
@@ -73,8 +50,14 @@ class TransferExecutor:
                 # 获取任务信息
                 task = await get_transfer_task(db, task_id)
                 if not task:
-                    logger.error(f"Task {task_id} not found")
+                    logger.error(f"任务 {task_id} 不存在")
                     return
+
+                logger.info(
+                    f"[任务 {task_id}] 开始执行: name={task.task_name}, "
+                    f"source={task.source_chat_username or task.source_chat_id}, "
+                    f"filter_type={task.filter_type}"
+                )
 
                 # 更新任务状态为运行中
                 await update_transfer_task(
@@ -99,6 +82,7 @@ class TransferExecutor:
                 # 获取可用的 session 账号
                 session_account = await session_manager.get_next_available_session(db)
                 if not session_account:
+                    logger.warning(f"[任务 {task_id}] 没有可用的 Session 账号，任务暂停")
                     await update_transfer_task(
                         db,
                         task_id,
@@ -114,6 +98,7 @@ class TransferExecutor:
                     return
 
                 # 更新任务使用的 session
+                logger.info(f"[任务 {task_id}] 使用 Session {session_account.id} 执行搬运")
                 await update_transfer_task(
                     db,
                     task_id,
@@ -146,6 +131,7 @@ class TransferExecutor:
                     logger.info(f"延迟删除 Redis 中的任务 ID")
 
             except Exception as e:
+                logger.error(f"[任务 {task_id}] 执行失败: {str(e)}", exc_info=True)
                 await update_transfer_task(
                     db,
                     task_id,
@@ -205,7 +191,7 @@ class TransferExecutor:
             # 遍历消息并转发
             transferred_count = 0
             matched_count = 0  # 匹配成功的消息数
-            logger.info(f"开始遍历频道消息")
+            logger.info(f"[任务 {task.id}] 开始遍历频道消息, 频道: {task.source_chat_username or task.source_chat_id}")
 
             try:
                 message_count = 0  # 遍历的消息总数
@@ -226,7 +212,7 @@ class TransferExecutor:
                             continue
                     except self.StopIterationSignal as e:
                         # 收到停止信号，记录日志并终止遍历
-                        logger.info(f"捕获到 StopIterationSignal: {str(e)}")
+                        logger.info(f"[任务 {task.id}] 停止遍历: {str(e)}, 已遍历 {message_count} 条消息, 已转发 {transferred_count} 个文件")
                         await create_task_log(
                             db,
                             task.id,
@@ -390,14 +376,14 @@ class TransferExecutor:
                 beijing_time = message_datetime_naive + timedelta(hours=8)
                 message_date = beijing_time.date()
 
-                logger.info(f"消息日期: {message_date}, 起始日期: {task.filter_date_from}, 截止日期: {task.filter_date_to}")
+                logger.debug(f"消息日期: {message_date}, 起始日期: {task.filter_date_from}, 截止日期: {task.filter_date_to}")
 
                 # 从最新消息开始遍历，先判断截止日期
                 if task.filter_date_to:
                     filter_to_date = task.filter_date_to.date() if hasattr(task.filter_date_to, 'date') else task.filter_date_to
                     if message_date > filter_to_date:
                         # 消息日期晚于截止日期，跳过当前消息，继续遍历
-                        logger.info(f"消息日期 {message_date} 晚于截止日期 {filter_to_date}，跳过")
+                        logger.debug(f"消息日期 {message_date} 晚于截止日期 {filter_to_date}，跳过")
                         return False
 
                 # 再判断起始日期
@@ -405,11 +391,11 @@ class TransferExecutor:
                     filter_from_date = task.filter_date_from.date() if hasattr(task.filter_date_from, 'date') else task.filter_date_from
                     if message_date < filter_from_date:
                         # 消息日期早于起始日期，后续消息会更早，直接终止遍历
-                        logger.info(f"消息日期 {message_date} 早于起始日期 {filter_from_date}，终止遍历")
+                        logger.info(f"[任务 {task.id}] 消息日期 {message_date} 早于起始日期 {filter_from_date}，终止遍历")
                         raise self.StopIterationSignal("消息日期早于起始日期，终止遍历")
 
                 # 消息在日期范围内
-                logger.info(f"消息日期 {message_date} 在范围内，继续处理")
+                logger.debug(f"消息日期 {message_date} 在范围内，继续处理")
 
             # 关键词过滤 - 在日期过滤之后执行
             if task.filter_keywords:
@@ -432,13 +418,8 @@ class TransferExecutor:
             # 重新抛出停止信号
             raise
         except Exception as e:
-            import traceback
-            error_traceback = traceback.format_exc()
-            logger.error(f"_apply_filters 异常!")
-            logger.error(f"异常类型: {type(e)}")
-            logger.error(f"异常消息: {str(e)}")
-            logger.error(f"Traceback:\n{error_traceback}")
-            raise  # 重新抛出异常
+            logger.error(f"_apply_filters 异常: {str(e)}", exc_info=True)
+            raise
 
 
 # 全局执行器实例

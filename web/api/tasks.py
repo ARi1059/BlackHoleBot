@@ -3,6 +3,7 @@
 搬运任务管理 API
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -32,6 +33,8 @@ from utils.task_queue import task_queue
 from utils.deep_link import generate_unique_deep_link_code
 from utils.channel_sender import send_collection_to_channel
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -137,6 +140,12 @@ async def create_task(
         }
     )
 
+    logger.info(
+        f"[Web] 管理员 {current_user.id} 创建搬运任务: task_id={task.id}, "
+        f"name={task.task_name}, source={task_data.source_chat_username or task_data.source_chat_id}, "
+        f"filter_type={task_data.filter_type}"
+    )
+
     return {
         "success": True,
         "task_id": task.id,
@@ -216,6 +225,7 @@ async def approve_task(
         raise HTTPException(status_code=400, detail="没有找到文件数据")
 
     media_list = [json.loads(data_str) for data_str in file_data_list]
+    logger.info(f"[Web] 管理员 {current_user.id} 审核任务 {task_id}，文件数: {len(media_list)}")
 
     # 生成深链接码
     deep_link_code = await generate_unique_deep_link_code(db)
@@ -272,6 +282,11 @@ async def approve_task(
         }
     )
 
+    logger.info(
+        f"[Web] 任务 {task_id} 审核通过，合集已创建: collection_id={collection.id}, "
+        f"name={collection.name}, media_count={len(media_list)}"
+    )
+
     return {
         "success": True,
         "collection_id": collection.id,
@@ -311,5 +326,7 @@ async def delete_task(
         action="delete_transfer_task",
         details={"task_id": task_id}
     )
+
+    logger.info(f"[Web] 管理员 {current_user.id} 删除任务 {task_id}")
 
     return SuccessResponse(message="任务已删除")

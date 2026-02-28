@@ -3,6 +3,7 @@
 Telegram Session 账号管理器
 """
 
+import logging
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
@@ -19,6 +20,8 @@ from database.crud import (
 from database.models import SessionAccount
 from utils.encryption import session_encryption
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class SessionManager:
@@ -55,6 +58,7 @@ class SessionManager:
         try:
             if not code:
                 # 第一步：发送验证码
+                logger.info(f"Session 登录第一步: 向手机号发送验证码")
                 client = TelegramClient(
                     StringSession(),
                     api_id,
@@ -65,6 +69,7 @@ class SessionManager:
 
                 # 保存客户端供后续步骤使用
                 self.login_clients[client_key] = client
+                logger.info(f"验证码已发送，客户端已缓存")
 
                 return {
                     "status": "code_sent",
@@ -98,6 +103,7 @@ class SessionManager:
                 await client.sign_in(password=password)
             except PhoneCodeInvalidError:
                 # 验证码无效，清理客户端
+                logger.warning(f"Session 登录失败: 验证码无效")
                 await client.disconnect()
                 del self.login_clients[client_key]
                 return {
@@ -106,6 +112,7 @@ class SessionManager:
                 }
 
             # 登录成功，获取 session_string
+            logger.info(f"Session 登录成功，获取 session_string")
             session_string = client.session.save()
 
             # 清理客户端
@@ -121,6 +128,7 @@ class SessionManager:
 
         except Exception as e:
             # 出错时清理客户端
+            logger.error(f"Session 登录异常: {str(e)}", exc_info=True)
             if client_key in self.login_clients:
                 try:
                     await self.login_clients[client_key].disconnect()
@@ -169,6 +177,7 @@ class SessionManager:
             priority=priority
         )
 
+        logger.info(f"Session 账号已添加到数据库, session_id={session_account.id}, priority={priority}")
         return session_account
 
     async def get_client(
@@ -188,17 +197,20 @@ class SessionManager:
         """
         # 检查是否已有活跃客户端
         if session_id in self.active_clients:
+            logger.debug(f"复用已有 Telethon 客户端, session_id={session_id}")
             return self.active_clients[session_id]
 
         # 从数据库获取 session 账号
         session_account = await get_session_account(db, session_id)
         if not session_account or not session_account.is_active:
+            logger.warning(f"Session {session_id} 不存在或未激活")
             return None
 
         # 解密 session_string
         session_string = session_encryption.decrypt(session_account.session_string)
 
         # 创建客户端
+        logger.info(f"创建新的 Telethon 客户端, session_id={session_id}")
         client = TelegramClient(
             StringSession(session_string),
             session_account.api_id,
@@ -206,6 +218,7 @@ class SessionManager:
         )
 
         await client.connect()
+        logger.info(f"Telethon 客户端已连接, session_id={session_id}")
 
         # 缓存客户端
         self.active_clients[session_id] = client
@@ -223,11 +236,17 @@ class SessionManager:
             client = self.active_clients[session_id]
             await client.disconnect()
             del self.active_clients[session_id]
+            logger.info(f"Telethon 客户端已断开, session_id={session_id}")
+        else:
+            logger.debug(f"尝试断开不存在的客户端, session_id={session_id}")
 
     async def disconnect_all(self):
         """断开所有客户端连接"""
+        count = len(self.active_clients)
+        logger.info(f"断开所有 Telethon 客户端, 共 {count} 个")
         for session_id in list(self.active_clients.keys()):
             await self.disconnect_client(session_id)
+        logger.info("所有 Telethon 客户端已断开")
 
     async def get_next_available_session(
         self,
@@ -265,6 +284,7 @@ class SessionManager:
             cooldown_until=cooldown_until,
             transfer_count=0  # 重置计数
         )
+        logger.info(f"Session {session_id} 进入冷却, 冷却 {cooldown_minutes} 分钟, 恢复时间: {cooldown_until.strftime('%H:%M:%S')}")
 
     async def increment_transfer_count(
         self,
