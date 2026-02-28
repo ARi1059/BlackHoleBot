@@ -19,9 +19,20 @@ import uvicorn
 import redis.asyncio as redis
 import logging
 
+from config import settings
+
+# 配置日志
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('web.log')
+    ]
+)
+
 logger = logging.getLogger(__name__)
 
-from config import settings
 from web.api import auth, dashboard, collections, users, tasks, sessions, settings as settings_api, analytics
 from web.websocket import websocket_endpoint
 from utils.transfer_executor import transfer_executor

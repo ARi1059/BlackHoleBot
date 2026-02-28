@@ -337,15 +337,37 @@ class TransferExecutor:
             StopIterationSignal: 当确定后续消息都不符合条件时，抛出此异常提前终止遍历
         """
         try:
+            # 获取消息基本信息
+            message_id = message.id
+            message_date = getattr(message, 'date', None)
+            has_photo = bool(message.photo)
+            has_video = bool(message.video)
+
+            # 打印入参和消息信息
+            logger.info(
+                f"[任务 {task.id}] 检查消息 ID={message_id}, "
+                f"日期={message_date}, photo={has_photo}, video={has_video}, "
+                f"过滤条件: type={task.filter_type}, "
+                f"date_from={task.filter_date_from}, date_to={task.filter_date_to}, "
+                f"keywords={task.filter_keywords}"
+            )
+
             # 媒体类型过滤
             filter_type = task.filter_type
 
             if filter_type == "photo" and not message.photo:
+                logger.info(f"[任务 {task.id}] 消息 {message_id} 不通过: 需要图片但不是图片")
                 return False
             if filter_type == "video" and not message.video:
+                logger.info(f"[任务 {task.id}] 消息 {message_id} 不通过: 需要视频但不是视频")
                 return False
             if filter_type == "all" and not (message.photo or message.video):
+                logger.info(f"[任务 {task.id}] 消息 {message_id} 不通过: 需要媒体但没有图片或视频")
                 return False
+
+            logger.info(f"[任务 {task.id}] 消息 {message_id} 通过媒体类型过滤")
+
+            logger.info(f"[任务 {task.id}] 消息 {message_id} 通过媒体类型过滤")
 
             # 日期范围过滤 - 优先执行，减少后续处理
             # 从最新消息开始遍历（reverse=False），先判断截止日期，再判断起始日期
@@ -353,6 +375,7 @@ class TransferExecutor:
                 message_datetime = getattr(message, 'date', None)
                 if message_datetime is None:
                     # 没有日期信息，跳过
+                    logger.info(f"[任务 {task.id}] 消息 {message_id} 不通过: 没有日期信息")
                     return False
 
                 # Telegram 消息时间是 UTC（offset-aware），转换为 offset-naive 后再转北京时间
@@ -360,14 +383,20 @@ class TransferExecutor:
                 beijing_time = message_datetime_naive + timedelta(hours=8)
                 message_date = beijing_time.date()
 
-                logger.debug(f"消息日期: {message_date}, 起始日期: {task.filter_date_from}, 截止日期: {task.filter_date_to}")
+                logger.info(
+                    f"[任务 {task.id}] 消息 {message_id} 日期检查: "
+                    f"UTC={message_datetime}, 北京时间={beijing_time}, 日期={message_date}"
+                )
 
                 # 从最新消息开始遍历，先判断截止日期
                 if task.filter_date_to:
                     filter_to_date = task.filter_date_to.date() if hasattr(task.filter_date_to, 'date') else task.filter_date_to
                     if message_date > filter_to_date:
                         # 消息日期晚于截止日期，跳过当前消息，继续遍历
-                        logger.debug(f"消息日期 {message_date} 晚于截止日期 {filter_to_date}，跳过")
+                        logger.info(
+                            f"[任务 {task.id}] 消息 {message_id} 不通过: "
+                            f"消息日期 {message_date} 晚于截止日期 {filter_to_date}"
+                        )
                         return False
 
                 # 再判断起始日期
@@ -375,11 +404,14 @@ class TransferExecutor:
                     filter_from_date = task.filter_date_from.date() if hasattr(task.filter_date_from, 'date') else task.filter_date_from
                     if message_date < filter_from_date:
                         # 消息日期早于起始日期，后续消息会更早，直接终止遍历
-                        logger.info(f"[任务 {task.id}] 消息日期 {message_date} 早于起始日期 {filter_from_date}，终止遍历")
+                        logger.info(
+                            f"[任务 {task.id}] 消息 {message_id} 触发终止: "
+                            f"消息日期 {message_date} 早于起始日期 {filter_from_date}"
+                        )
                         raise self.StopIterationSignal("消息日期早于起始日期，终止遍历")
 
                 # 消息在日期范围内
-                logger.debug(f"消息日期 {message_date} 在范围内，继续处理")
+                logger.info(f"[任务 {task.id}] 消息 {message_id} 通过日期过滤")
 
             # 关键词过滤 - 在日期过滤之后执行
             if task.filter_keywords:
@@ -390,12 +422,20 @@ class TransferExecutor:
 
                 # 如果消息没有文本，直接跳过
                 if not text:
+                    logger.info(f"[任务 {task.id}] 消息 {message_id} 不通过: 需要关键词但消息没有提取到文本")
                     return False
 
                 # 检查关键词是否在文本中（模糊匹配）
                 if not any(keyword in text for keyword in task.filter_keywords):
+                    logger.info(
+                        f"[任务 {task.id}] 消息 {message_id} 不通过: "
+                        f"文本中不包含关键词 {task.filter_keywords}"
+                    )
                     return False
 
+                logger.info(f"[任务 {task.id}] 消息 {message_id} 通过关键词过滤")
+
+            logger.info(f"[任务 {task.id}] ✅ 消息 {message_id} 通过所有过滤条件")
             return True
 
         except self.StopIterationSignal:
