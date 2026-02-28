@@ -230,32 +230,21 @@ async def handle_approve_permission(callback: CallbackQuery, user: User, db: Asy
             created_by=user.id
         )
 
-        # 批量插入媒体（跳过重复文件）
-        inserted_count = 0
+        # 批量插入媒体
         for index, media_data in enumerate(media_list):
-            try:
-                await create_media(
-                    db,
-                    collection_id=collection.id,
-                    file_id=media_data["file_id"],
-                    file_unique_id=media_data["file_unique_id"],
-                    file_type=media_data["file_type"],
-                    order_index=index,
-                    file_size=media_data.get("file_size"),
-                    caption=media_data.get("caption")
-                )
-                inserted_count += 1
-            except Exception as e:
-                # 跳过重复的文件
-                if "duplicate key" in str(e) or "UniqueViolationError" in str(e):
-                    logger.warning(f"跳过重复文件: {media_data['file_unique_id']}")
-                    await db.rollback()  # 回滚失败的事务
-                    continue
-                else:
-                    raise
+            await create_media(
+                db,
+                collection_id=collection.id,
+                file_id=media_data["file_id"],
+                file_unique_id=media_data["file_unique_id"],
+                file_type=media_data["file_type"],
+                order_index=index,
+                file_size=media_data.get("file_size"),
+                caption=media_data.get("caption")
+            )
 
-        # 更新合集媒体数量（使用实际插入的数量）
-        await update_collection(db, collection.id, media_count=inserted_count)
+        # 更新合集媒体数量
+        await update_collection(db, collection.id, media_count=len(media_list))
 
         # 清空 Redis
         await redis_client.delete(redis_key)
