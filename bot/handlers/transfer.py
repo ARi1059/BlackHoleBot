@@ -18,20 +18,24 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-@router.message(F.forward_from_chat)
+@router.message()
 async def receive_transferred_media(message: Message, redis_client):
     """
     接收转发的媒体文件
 
     当 Telethon 客户端转发文件到 Bot 时，Bot 接收并提取 file_id
     """
+    # 只处理有媒体的消息
+    if not (message.photo or message.video):
+        return
+
     # 从 Redis 获取当前正在执行的任务 ID
     task_id_str = await redis_client.get("current_transfer_task_id")
     task_id = int(task_id_str) if task_id_str else None
 
     if not task_id:
         # 没有正在执行的任务，忽略
-        logger.debug(f"收到转发消息 message_id={message.message_id}，但无活跃任务，忽略")
+        logger.debug(f"收到媒体消息 message_id={message.message_id}，但无活跃任务，忽略")
         return
 
     # 标记为 pending
