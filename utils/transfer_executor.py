@@ -154,6 +154,11 @@ class TransferExecutor:
             finally:
                 break
 
+    class _SwitchSessionSignal(Exception):
+        """切换 Session 时的内部信号，用于跳出 iter_messages 循环"""
+        def __init__(self, last_message_id: int):
+            self.last_message_id = last_message_id
+
     async def _transfer_media(
         self,
         db: AsyncSession,
@@ -163,43 +168,50 @@ class TransferExecutor:
         """
         从频道转发媒体到 Bot
 
+        通过外层循环管理 Session 切换：当需要切换账号时，跳出内层的
+        iter_messages 循环，用新客户端从断点消息 ID 继续遍历。
+
         Args:
             db: 数据库 session
             task: 搬运任务对象
             session_account: Session 账号对象
         """
-        # 获取 Telethon 客户端
-        client = await session_manager.get_client(db, session_account.id)
-        if not client:
-            raise Exception("无法创建 Telethon 客户端")
+        # 创建 Redis key 用于存储文件
+        redis_key = f"task:{task.id}:files"
+        await update_transfer_task(db, task.id, temp_redis_key=redis_key)
 
-        try:
-            # 获取频道实体
-            try:
-                # 优先使用 username，如果没有则使用 chat_id
-                if task.source_chat_username:
-                    channel = await client.get_entity(task.source_chat_username)
-                else:
-                    channel = await client.get_entity(task.source_chat_id)
-            except (ChannelPrivateError, ChatAdminRequiredError):
-                raise Exception("无法访问频道，请确保账号已加入该频道")
+        # 全局计数器，跨 Session 保持
+        transferred_count = 0
+        matched_count = 0
+        message_count = 0
+        offset_id = 0  # 断点消息 ID，0 表示从最新消息开始
+        finished = False  # 是否遍历完成
 
-            # 创建 Redis key 用于存储文件
-            redis_key = f"task:{task.id}:files"
-            await update_transfer_task(db, task.id, temp_redis_key=redis_key)
+        logger.info(f"[任务 {task.id}] 开始遍历频道消息, 频道: {task.source_chat_username or task.source_chat_id}")
 
-            # 遍历消息并转发
-            transferred_count = 0
-            matched_count = 0  # 匹配成功的消息数
-            logger.info(f"[任务 {task.id}] 开始遍历频道消息, 频道: {task.source_chat_username or task.source_chat_id}")
+        while not finished:
+            # 获取当前 Session 的客户端
+            client = await session_manager.get_client(db, session_account.id)
+            if not client:
+                raise Exception(f"无法创建 Telethon 客户端 (Session {session_account.id})")
 
             try:
-                message_count = 0  # 遍历的消息总数
-                async for message in client.iter_messages(
-                    channel,
-                    limit=None,
-                    reverse=False
-                ):
+                # 获取频道实体（每个客户端需要独立获取）
+                try:
+                    if task.source_chat_username:
+                        channel = await client.get_entity(task.source_chat_username)
+                    else:
+                        channel = await client.get_entity(task.source_chat_id)
+                except (ChannelPrivateError, ChatAdminRequiredError):
+                    raise Exception("无法访问频道，请确保账号已加入该频道")
+
+                # 使用当前客户端遍历消息
+                iter_kwargs = {"limit": None, "reverse": False}
+                if offset_id:
+                    iter_kwargs["offset_id"] = offset_id
+                    logger.info(f"[任务 {task.id}] 从消息 ID {offset_id} 继续遍历 (Session {session_account.id})")
+
+                async for message in client.iter_messages(channel, **iter_kwargs):
                     message_count += 1
 
                     # 检查 Bot 是否限流
@@ -211,7 +223,6 @@ class TransferExecutor:
                         if not await self._apply_filters(message, task):
                             continue
                     except self.StopIterationSignal as e:
-                        # 收到停止信号，记录日志并终止遍历
                         logger.info(f"[任务 {task.id}] 停止遍历: {str(e)}, 已遍历 {message_count} 条消息, 已转发 {transferred_count} 个文件")
                         await create_task_log(
                             db,
@@ -219,7 +230,7 @@ class TransferExecutor:
                             "info",
                             f"已到达日期范围下限，提前终止遍历。已转发 {transferred_count} 个文件"
                         )
-                        logger.info(f"任务 {task.id}: {str(e)}")
+                        finished = True
                         break
 
                     # 匹配成功，计数并更新总数
@@ -228,41 +239,12 @@ class TransferExecutor:
 
                     # 检查 session 限流
                     if await session_rate_limiter.check_and_update(db, session_account.id, task.id):
-                        # 需要冷却，切换 session
                         await create_task_log(
-                            db,
-                            task.id,
-                            "session_switch",
-                            f"Session {session_account.id} 需要冷却，尝试切换账号"
+                            db, task.id, "session_switch",
+                            f"Session {session_account.id} 达到限流阈值，尝试切换账号"
                         )
-
-                        # 获取下一个可用 session
-                        next_session = await session_manager.get_next_available_session(db)
-                        if not next_session:
-                            # 没有可用 session，暂停任务
-                            await update_transfer_task(db, task.id, status=TaskStatus.PAUSED)
-                            await create_task_log(
-                                db,
-                                task.id,
-                                "warning",
-                                "所有 Session 都在冷却中，任务已暂停"
-                            )
-                            return
-
-                        # 断开当前客户端
-                        await session_manager.disconnect_client(session_account.id)
-
-                        # 切换到新 session
-                        session_account = next_session
-                        client = await session_manager.get_client(db, session_account.id)
-                        await update_transfer_task(db, task.id, session_account_id=session_account.id)
-
-                        await create_task_log(
-                            db,
-                            task.id,
-                            "session_switch",
-                            f"已切换到 Session {session_account.id}"
-                        )
+                        # 抛出信号跳出 iter_messages 循环，记录当前消息 ID
+                        raise self._SwitchSessionSignal(message.id)
 
                     # 转发消息到 Bot
                     try:
@@ -272,67 +254,69 @@ class TransferExecutor:
                             from_peer=channel
                         )
 
-                        # Bot 端会自动接收并存储 file_id 到 Redis
                         transferred_count += 1
-
-                        # 更新进度
                         await update_transfer_task(
-                            db,
-                            task.id,
-                            progress_current=transferred_count
+                            db, task.id, progress_current=transferred_count
                         )
 
-                        # 每转发 10 个文件记录一次日志
                         if transferred_count % 10 == 0:
                             await create_task_log(
-                                db,
-                                task.id,
-                                "info",
+                                db, task.id, "info",
                                 f"已转发 {transferred_count}/{matched_count} 个文件"
                             )
 
                     except FloodWaitError as e:
-                        # API 限流
                         await create_task_log(
-                            db,
-                            task.id,
-                            "rate_limit",
+                            db, task.id, "rate_limit",
                             f"遇到 API 限流，需要等待 {e.seconds} 秒"
                         )
-
-                        # 设置当前 session 冷却
                         await session_manager.set_session_cooldown(
-                            db,
-                            session_account.id,
+                            db, session_account.id,
                             cooldown_minutes=int(e.seconds / 60) + 1
                         )
-
-                        # 切换 session
-                        next_session = await session_manager.get_next_available_session(db)
-                        if not next_session:
-                            await update_transfer_task(db, task.id, status=TaskStatus.PAUSED)
-                            return
-
-                        await session_manager.disconnect_client(session_account.id)
-                        session_account = next_session
-                        client = await session_manager.get_client(db, session_account.id)
-                        await update_transfer_task(db, task.id, session_account_id=session_account.id)
+                        # 抛出信号跳出循环，从当前消息重试
+                        raise self._SwitchSessionSignal(message.id)
 
                     except Exception as e:
                         await create_task_log(
-                            db,
-                            task.id,
-                            "error",
+                            db, task.id, "error",
                             f"转发消息失败: {str(e)}"
                         )
+                else:
+                    # for 循环正常结束（没有 break），说明所有消息遍历完毕
+                    finished = True
+
+            except self._SwitchSessionSignal as sig:
+                # 需要切换 Session，记录断点
+                offset_id = sig.last_message_id
+
+                # 断开当前客户端
+                await session_manager.disconnect_client(session_account.id)
+
+                # 获取下一个可用 Session
+                next_session = await session_manager.get_next_available_session(db)
+                if not next_session:
+                    await update_transfer_task(db, task.id, status=TaskStatus.PAUSED)
+                    await create_task_log(
+                        db, task.id, "warning",
+                        "所有 Session 都在冷却中，任务已暂停"
+                    )
+                    return
+
+                session_account = next_session
+                await update_transfer_task(db, task.id, session_account_id=session_account.id)
+                await create_task_log(
+                    db, task.id, "session_switch",
+                    f"已切换到 Session {session_account.id}，从消息 ID {offset_id} 继续"
+                )
 
             except self.StopIterationSignal:
-                # 已在内层处理，这里只是为了捕获可能遗漏的信号
-                pass
+                finished = True
 
-        finally:
-            # 断开客户端
-            await session_manager.disconnect_client(session_account.id)
+            finally:
+                # 每轮循环结束都断开当前客户端
+                if finished:
+                    await session_manager.disconnect_client(session_account.id)
 
     class StopIterationSignal(Exception):
         """用于提前终止遍历的信号"""
