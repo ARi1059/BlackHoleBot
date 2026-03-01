@@ -18,6 +18,7 @@ from database.crud import (
     update_collection,
     create_admin_log,
     get_collection,
+    bulk_create_media,
 )
 from bot.states import UploadStates, AddMediaStates
 from utils import generate_unique_deep_link_code, create_deep_link
@@ -241,20 +242,10 @@ async def handle_access_permission(callback: CallbackQuery, user: User, db: Asyn
 
         # 批量插入媒体
         media_list = data["media_list"]
-        for index, media_data in enumerate(media_list):
-            await create_media(
-                db,
-                collection_id=collection.id,
-                file_id=media_data["file_id"],
-                file_unique_id=media_data["file_unique_id"],
-                file_type=media_data["file_type"],
-                order_index=index,
-                file_size=media_data.get("file_size"),
-                caption=media_data.get("caption")
-            )
+        inserted_count = await bulk_create_media(db, collection.id, media_list)
 
         # 更新合集媒体数量
-        await update_collection(db, collection.id, media_count=len(media_list))
+        await update_collection(db, collection.id, media_count=inserted_count)
 
         # 记录日志
         await create_admin_log(
@@ -444,17 +435,13 @@ async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db
 
     try:
         # 批量插入媒体
-        for index, media_data in enumerate(media_list):
-            await create_media(
-                db,
-                collection_id=collection_id,
-                file_id=media_data["file_id"],
-                file_unique_id=media_data["file_unique_id"],
-                file_type=media_data["file_type"],
-                order_index=current_media_count + index,
-                file_size=media_data.get("file_size"),
-                caption=media_data.get("caption")
-            )
+        inserted_count = await bulk_create_media(
+            db,
+            collection_id,
+            media_list,
+            order_index_offset=current_media_count
+        )
+        total_count = current_media_count + inserted_count
 
         # 更新合集媒体数量
         await update_collection(db, collection_id, media_count=total_count)

@@ -5,7 +5,8 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func, or_, cast, Text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -502,6 +503,80 @@ async def create_media(
     await db.commit()
     await db.refresh(media)
     return media
+
+
+async def bulk_create_media(
+    db: AsyncSession,
+    collection_id: int,
+    media_list: List[Dict[str, Any]],
+    batch_size: int = 500,
+    order_index_offset: int = 0
+) -> int:
+    """
+    批量创建媒体，跳过重复文件
+
+    Args:
+        db: 数据库 session
+        collection_id: 合集 ID
+        media_list: 媒体数据列表，每个元素包含 file_id, file_unique_id, file_type 等字段
+        batch_size: 每批插入的数量，默认 500
+        order_index_offset: order_index 的偏移量，用于追加媒体时从现有数量开始
+
+    Returns:
+        成功插入的数量
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if not media_list:
+        return 0
+
+    total_inserted = 0
+    now = datetime.now()
+
+    # 分批处理，避免单次插入数据量过大
+    for batch_num, i in enumerate(range(0, len(media_list), batch_size), 1):
+        batch = media_list[i:i + batch_size]
+        media_objects = []
+
+        logger.info(f"准备第 {batch_num} 批数据，范围: {i} - {i + len(batch) - 1}")
+
+        for index, media_data in enumerate(batch):
+            try:
+                media_objects.append({
+                    "collection_id": collection_id,
+                    "file_id": media_data["file_id"],
+                    "file_unique_id": media_data["file_unique_id"],
+                    "file_type": media_data["file_type"],
+                    "file_size": media_data.get("file_size"),
+                    "caption": media_data.get("caption"),
+                    "order_index": order_index_offset + i + index,  # 全局索引 + 偏移量
+                    "created_at": now
+                })
+            except Exception as e:
+                logger.error(f"准备数据失败，索引 {i + index}: {str(e)}, 数据: {media_data}")
+                raise
+
+        # 使用 PostgreSQL 的 INSERT ... ON CONFLICT DO NOTHING 跳过重复
+        try:
+            logger.info(f"开始插入第 {batch_num} 批，共 {len(media_objects)} 条")
+            stmt = insert(Media).values(media_objects)
+            stmt = stmt.on_conflict_do_nothing(index_elements=["file_unique_id"])
+
+            result = await db.execute(stmt)
+            batch_inserted = result.rowcount if result.rowcount else 0
+            total_inserted += batch_inserted
+
+            logger.info(f"第 {batch_num} 批插入完成，成功插入 {batch_inserted} 条，累计 {total_inserted} 条")
+        except Exception as e:
+            logger.error(f"第 {batch_num} 批插入失败: {str(e)}", exc_info=True)
+            # 记录失败批次的最后几条数据
+            logger.error(f"失败批次最后 3 条数据: {media_objects[-3:]}")
+            raise
+
+    await db.commit()
+    logger.info(f"所有批次插入完成，总计成功插入 {total_inserted} 条")
+    return total_inserted
 
 
 async def get_media_by_collection(

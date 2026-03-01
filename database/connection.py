@@ -21,8 +21,10 @@ redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 engine = create_async_engine(
     settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"),
     echo=settings.LOG_LEVEL == "DEBUG",
-    poolclass=NullPool,
-    pool_pre_ping=True,
+    pool_size=10,  # 连接池大小
+    max_overflow=20,  # 最大溢出连接数
+    pool_pre_ping=True,  # 连接前检查是否有效
+    pool_recycle=3600,  # 1小时后回收连接
 )
 
 # 创建异步 session 工厂

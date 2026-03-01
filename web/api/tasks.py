@@ -18,7 +18,8 @@ from database.crud import (
     create_collection,
     create_media,
     update_collection,
-    create_admin_log
+    create_admin_log,
+    bulk_create_media,
 )
 from database.models import TaskStatus, AccessLevel
 from web.schemas import (
@@ -247,29 +248,17 @@ async def approve_task(
         created_by=current_user.id
     )
 
-    # 批量插入媒体（跳过重复文件）
-    inserted_count = 0
-    for index, media_data in enumerate(media_list):
-        try:
-            await create_media(
-                db,
-                collection_id=collection.id,
-                file_id=media_data["file_id"],
-                file_unique_id=media_data["file_unique_id"],
-                file_type=media_data["file_type"],
-                order_index=index,
-                file_size=media_data.get("file_size"),
-                caption=media_data.get("caption")
-            )
-            inserted_count += 1
-        except Exception as e:
-            # 跳过重复的文件
-            if "duplicate key" in str(e) or "UniqueViolationError" in str(e):
-                logger.warning(f"跳过重复文件: {media_data['file_unique_id']}")
-                await db.rollback()  # 回滚失败的事务
-                continue
-            else:
-                raise
+    # 批量插入媒体（自动跳过重复文件）
+    try:
+        logger.info(f"[Web] 开始批量插入 {len(media_list)} 个文件到合集 {collection.id}")
+        inserted_count = await bulk_create_media(db, collection.id, media_list)
+        logger.info(f"[Web] 批量插入完成，成功插入 {inserted_count} 个文件")
+    except Exception as e:
+        logger.error(f"[Web] 批量插入失败: {str(e)}", exc_info=True)
+        # 删除已创建的合集
+        await db.delete(collection)
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"批量插入失败: {str(e)}")
 
     # 更新合集媒体数量（使用实际插入的数量）
     await update_collection(db, collection.id, media_count=inserted_count)

@@ -145,5 +145,6 @@ if __name__ == "__main__":
         "web.main:app",
         host=settings.WEB_HOST,
         port=settings.WEB_PORT,
-        reload=True
+        reload=False,
+        reload_excludes=["*.log", "*.db", "*.sqlite", "__pycache__", ".git"]
     )
