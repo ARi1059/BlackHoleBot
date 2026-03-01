@@ -63,6 +63,14 @@ def create_pagination_keyboard(
         )
     )
 
+    # 第三行：返回主菜单
+    builder.row(
+        InlineKeyboardButton(
+            text="🏠 返回主菜单",
+            callback_data="main_menu"
+        )
+    )
+
     return builder.as_markup()
 
 
@@ -169,6 +177,7 @@ def create_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     # 管理员功能
     if is_admin:
         builder.row(
+            InlineKeyboardButton(text="📤 推送合集", callback_data="push_collections"),
             InlineKeyboardButton(text="⚙️ 管理面板", callback_data="admin_panel")
         )
 
@@ -276,6 +285,54 @@ def create_admin_panel_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="💬 设置欢迎消息", callback_data="admin_welcome"),
         InlineKeyboardButton(text="📢 广播消息", callback_data="admin_broadcast")
     )
+
+    # 返回主菜单
+    builder.row(InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu"))
+
+    return builder.as_markup()
+
+
+
+
+def create_push_collections_keyboard(collections: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    """
+    创建推送合集列表键盘
+
+    Args:
+        collections: 合集列表
+        page: 当前页码
+        total_pages: 总页数
+
+    Returns:
+        InlineKeyboardMarkup
+    """
+    builder = InlineKeyboardBuilder()
+
+    # 合集列表，每个合集右侧有推送按钮
+    for collection in collections:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"📦 {collection.name}",
+                callback_data=f"view_collection_{collection.deep_link_code}"
+            ),
+            InlineKeyboardButton(
+                text="📤 推送",
+                callback_data=f"push_collection_{collection.id}"
+            )
+        )
+
+    # 分页按钮
+    buttons = []
+    if page > 1:
+        buttons.append(InlineKeyboardButton(text="◀️ 上一页", callback_data=f"push_page_{page - 1}"))
+
+    buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="page_info"))
+
+    if page < total_pages:
+        buttons.append(InlineKeyboardButton(text="下一页 ▶️", callback_data=f"push_page_{page + 1}"))
+
+    if buttons:
+        builder.row(*buttons)
 
     # 返回主菜单
     builder.row(InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu"))

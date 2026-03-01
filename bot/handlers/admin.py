@@ -481,3 +481,86 @@ async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db
 
 
 
+
+
+# ==================== 推送合集功能 ====================
+
+@router.callback_query(F.data == "push_collections")
+async def handle_push_collections(callback: CallbackQuery, user: User, db: AsyncSession):
+    """显示推送合集列表"""
+    from database.crud import get_collections
+    from bot.keyboards.inline import create_push_collections_keyboard
+
+    # 获取合集列表（第一页）
+    collections, total_count = await get_collections(db, skip=0, limit=10)
+    total_pages = (total_count + 9) // 10
+
+    await callback.message.edit_text(
+        "📤 推送合集到私密频道\n\n"
+        "选择要推送的合集：",
+        reply_markup=create_push_collections_keyboard(collections, 1, total_pages)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("push_page_"))
+async def handle_push_page(callback: CallbackQuery, user: User, db: AsyncSession):
+    """处理推送合集列表分页"""
+    from database.crud import get_collections
+    from bot.keyboards.inline import create_push_collections_keyboard
+
+    page = int(callback.data.split("_")[-1])
+    skip = (page - 1) * 10
+
+    # 获取指定页的合集列表
+    collections, total_count = await get_collections(db, skip=skip, limit=10)
+    total_pages = (total_count + 9) // 10
+
+    await callback.message.edit_text(
+        "📤 推送合集到私密频道\n\n"
+        "选择要推送的合集：",
+        reply_markup=create_push_collections_keyboard(collections, page, total_pages)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("push_collection_"))
+async def handle_push_collection(callback: CallbackQuery, user: User, db: AsyncSession):
+    """推送选中的合集到私密频道"""
+    import logging
+    from database.crud import get_collection
+    from database.crud import get_media_by_collection
+    
+    logger = logging.getLogger(__name__)
+    
+    collection_id = int(callback.data.split("_")[-1])
+    
+    # 获取合集信息
+    collection = await get_collection(db, collection_id)
+    if not collection:
+        await callback.answer("❌ 合集不存在", show_alert=True)
+        return
+    
+    # 获取合集的所有媒体
+    media_list_db = await get_media_by_collection(db, collection_id, skip=0, limit=collection.media_count)
+    
+    # 转换为推送格式
+    media_list = []
+    for media in media_list_db:
+        media_list.append({
+            "file_id": media.file_id,
+            "file_unique_id": media.file_unique_id,
+            "file_type": media.file_type,
+            "file_size": media.file_size,
+            "caption": media.caption
+        })
+    
+    # 推送到私密频道
+    try:
+        await send_collection_to_channel(callback.bot, media_list, collection.name)
+        await callback.answer(f"✅ 已推送合集「{collection.name}」到私密频道", show_alert=True)
+        logger.info(f"管理员 {user.telegram_id} 手动推送合集 {collection.id} 到私密频道")
+    except Exception as e:
+        logger.error(f"推送合集失败: {e}", exc_info=True)
+        await callback.answer(f"❌ 推送失败: {str(e)}", show_alert=True)
+
