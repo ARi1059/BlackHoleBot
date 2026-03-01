@@ -265,15 +265,15 @@ async def approve_task(
 
     logger.info(f"[Web] 任务 {task_id} 共 {len(media_list)} 个文件，成功插入 {inserted_count} 个")
 
-    # 发送到私有频道
-    await send_collection_to_channel(
-        None,
-        media_list,
-        collection.name,
-        collection.description,
-        collection.tags,
-        inserted_count
-    )
+    # 临时注释：发送到私有频道
+    # await send_collection_to_channel(
+    #     None,
+    #     media_list,
+    #     collection.name,
+    #     collection.description,
+    #     collection.tags,
+    #     inserted_count
+    # )
 
     # 清空 Redis
     await redis_client.delete(redis_key)
