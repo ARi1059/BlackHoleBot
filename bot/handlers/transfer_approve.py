@@ -263,7 +263,14 @@ async def handle_approve_permission(callback: CallbackQuery, user: User, db: Asy
         )
 
         # 发送到私有频道
-        await send_collection_to_channel(callback.bot, media_list, collection.name)
+        await send_collection_to_channel(
+            callback.bot,
+            media_list,
+            collection.name,
+            collection.description,
+            collection.tags,
+            len(media_list)
+        )
 
         # 清除状态
         await state.clear()

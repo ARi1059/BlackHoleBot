@@ -263,7 +263,14 @@ async def handle_access_permission(callback: CallbackQuery, user: User, db: Asyn
         )
 
         # 发送到私有频道
-        await send_collection_to_channel(callback.bot, media_list, collection.name)
+        await send_collection_to_channel(
+            callback.bot,
+            media_list,
+            collection.name,
+            collection.description,
+            collection.tags,
+            len(media_list)
+        )
 
         # 清除状态
         await state.clear()
@@ -463,7 +470,16 @@ async def cmd_done_add_media(message: Message, user: User, state: FSMContext, db
         )
 
         # 发送新增内容到私有频道
-        await send_collection_to_channel(message.bot, media_list, f"{collection_name} (新增)")
+        # 获取完整的合集信息
+        collection = await get_collection(db, collection_id)
+        await send_collection_to_channel(
+            message.bot,
+            media_list,
+            f"{collection_name} (新增)",
+            collection.description,
+            collection.tags,
+            len(media_list)
+        )
 
         # 清除状态
         await state.clear()
@@ -560,7 +576,14 @@ async def handle_push_collection(callback: CallbackQuery, user: User, db: AsyncS
     
     # 推送到私密频道
     try:
-        await send_collection_to_channel(callback.bot, media_list, collection.name)
+        await send_collection_to_channel(
+            callback.bot,
+            media_list,
+            collection.name,
+            collection.description,
+            collection.tags,
+            collection.media_count
+        )
         await callback.answer(f"✅ 已推送合集「{collection.name}」到私密频道", show_alert=True)
         logger.info(f"管理员 {user.telegram_id} 手动推送合集 {collection.id} 到私密频道")
     except Exception as e:
