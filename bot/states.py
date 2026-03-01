@@ -48,3 +48,10 @@ class AdminSettingsStates(StatesGroup):
 class SearchStates(StatesGroup):
     """搜索状态"""
     waiting_for_keyword = State()        # 等待输入搜索关键词
+
+
+class EditCollectionStates(StatesGroup):
+    """编辑合集状态"""
+    waiting_for_name = State()           # 等待输入新名称
+    waiting_for_description = State()    # 等待输入新描述
+    waiting_for_tags = State()           # 等待输入新标签

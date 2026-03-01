@@ -20,7 +20,7 @@ from database.crud import (
     get_collection,
     bulk_create_media,
 )
-from bot.states import UploadStates, AddMediaStates
+from bot.states import UploadStates, AddMediaStates, EditCollectionStates
 from utils import generate_unique_deep_link_code, create_deep_link
 from utils.channel_sender import send_collection_to_channel
 from config import settings
@@ -165,7 +165,10 @@ async def handle_collection_description(message: Message, state: FSMContext):
     if message.text == "/skip":
         description = ""
     else:
-        description = message.text.strip()
+        # 获取消息的 HTML 格式文本，保留所有格式和 Premium Emoji
+        description = message.html_text or message.text or ""
+        description = description.strip()
+
         if len(description) > 500:
             await message.answer("❌ 描述长度不能超过 500 字符")
             return
@@ -563,4 +566,197 @@ async def handle_push_collection(callback: CallbackQuery, user: User, db: AsyncS
     except Exception as e:
         logger.error(f"推送合集失败: {e}", exc_info=True)
         await callback.answer(f"❌ 推送失败: {str(e)}", show_alert=True)
+
+
+
+# ==================== 合集管理功能 ====================
+
+@router.callback_query(F.data == "manage_collections")
+async def handle_manage_collections(callback: CallbackQuery, user: User, db: AsyncSession):
+    """显示合集管理列表"""
+    from database.crud import get_collections
+    from bot.keyboards.inline import create_manage_collections_keyboard
+    
+    # 获取合集列表（第一页）
+    collections, total_count = await get_collections(db, skip=0, limit=10)
+    total_pages = (total_count + 9) // 10
+    
+    await callback.message.edit_text(
+        "📝 合集管理\n\n"
+        "选择要编辑的合集：",
+        reply_markup=create_manage_collections_keyboard(collections, 1, total_pages)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manage_page_"))
+async def handle_manage_page(callback: CallbackQuery, user: User, db: AsyncSession):
+    """处理合集管理列表分页"""
+    from database.crud import get_collections
+    from bot.keyboards.inline import create_manage_collections_keyboard
+    
+    page = int(callback.data.split("_")[-1])
+    skip = (page - 1) * 10
+    
+    # 获取指定页的合集列表
+    collections, total_count = await get_collections(db, skip=skip, limit=10)
+    total_pages = (total_count + 9) // 10
+    
+    await callback.message.edit_text(
+        "📝 合集管理\n\n"
+        "选择要编辑的合集：",
+        reply_markup=create_manage_collections_keyboard(collections, page, total_pages)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit_collection_"))
+async def handle_edit_collection(callback: CallbackQuery, user: User, state: FSMContext, db: AsyncSession):
+    """开始编辑合集"""
+    from bot.states import EditCollectionStates
+    
+    collection_id = int(callback.data.split("_")[-1])
+    
+    # 获取合集信息
+    collection = await get_collection(db, collection_id)
+    if not collection:
+        await callback.answer("❌ 合集不存在", show_alert=True)
+        return
+    
+    # 保存合集 ID 到状态
+    await state.update_data(collection_id=collection_id)
+    
+    await callback.message.answer(
+        f"✏️ 编辑合集：{collection.name}\n\n"
+        f"📝 请输入新的合集名称\n\n"
+        f"当前名称：{collection.name}\n\n"
+        f"发送 /skip 跳过此步骤"
+    )
+    
+    await state.set_state(EditCollectionStates.waiting_for_name)
+    await callback.answer()
+
+
+@router.message(EditCollectionStates.waiting_for_name)
+async def handle_edit_name(message: Message, state: FSMContext):
+    """处理编辑合集名称"""
+    from bot.states import EditCollectionStates
+    
+    if message.text == "/skip":
+        new_name = None
+    else:
+        new_name = message.text.strip()
+        if len(new_name) > 100:
+            await message.answer("❌ 名称长度不能超过 100 字符")
+            return
+    
+    await state.update_data(new_name=new_name)
+    
+    await message.answer(
+        "📝 请输入新的合集描述\n\n"
+        "发送 /skip 跳过此步骤"
+    )
+    
+    await state.set_state(EditCollectionStates.waiting_for_description)
+
+
+@router.message(EditCollectionStates.waiting_for_description)
+async def handle_edit_description(message: Message, state: FSMContext):
+    """处理编辑合集描述"""
+    from bot.states import EditCollectionStates
+    
+    if message.text == "/skip":
+        new_description = None
+    else:
+        # 获取消息的 HTML 格式文本，保留所有格式和 Premium Emoji
+        new_description = message.html_text or message.text or ""
+        new_description = new_description.strip()
+        
+        if len(new_description) > 500:
+            await message.answer("❌ 描述长度不能超过 500 字符")
+            return
+    
+    await state.update_data(new_description=new_description)
+    
+    await message.answer(
+        "🏷️ 请输入新的标签（用空格分隔）\n\n"
+        "示例: 猫咪 可爱 宠物\n"
+        "发送 /skip 跳过此步骤"
+    )
+    
+    await state.set_state(EditCollectionStates.waiting_for_tags)
+
+
+@router.message(EditCollectionStates.waiting_for_tags)
+async def handle_edit_tags(message: Message, user: User, state: FSMContext, db: AsyncSession):
+    """处理编辑合集标签并保存"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if message.text == "/skip":
+        new_tags = None
+    else:
+        new_tags = message.text.strip().split()
+        
+        # 验证
+        if len(new_tags) > 10:
+            await message.answer("❌ 标签数量不能超过 10 个")
+            return
+        
+        for tag in new_tags:
+            if len(tag) > 20:
+                await message.answer(f"❌ 标签 '{tag}' 长度超过 20 字符")
+                return
+    
+    # 获取状态数据
+    data = await state.get_data()
+    collection_id = data["collection_id"]
+    new_name = data.get("new_name")
+    new_description = data.get("new_description")
+    
+    # 获取合集
+    collection = await get_collection(db, collection_id)
+    if not collection:
+        await message.answer("❌ 合集不存在")
+        await state.clear()
+        return
+    
+    # 更新合集信息
+    update_data = {}
+    if new_name:
+        update_data["name"] = new_name
+    if new_description is not None:
+        update_data["description"] = new_description
+    if new_tags is not None:
+        update_data["tags"] = new_tags
+    
+    if update_data:
+        await update_collection(db, collection_id, **update_data)
+        
+        # 记录日志
+        await create_admin_log(
+            db,
+            user_id=user.id,
+            action="edit_collection",
+            details={
+                "collection_id": collection_id,
+                "collection_name": collection.name,
+                "updates": update_data
+            }
+        )
+
+        logger.info(f"管理员 {user.telegram_id} 编辑了合集 {collection_id}")
+
+        # 构建更新消息
+        update_msg = f"✅ 合集已更新！\n\n📦 合集：{new_name or collection.name}\n"
+        if new_description is not None:
+            update_msg += "📝 描述：已更新\n"
+        if new_tags is not None:
+            update_msg += "🏷️ 标签：已更新\n"
+
+        await message.answer(update_msg)
+    else:
+        await message.answer("ℹ️ 未进行任何修改")
+
+    await state.clear()
 

@@ -178,6 +178,9 @@ def create_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     if is_admin:
         builder.row(
             InlineKeyboardButton(text="📤 推送合集", callback_data="push_collections"),
+            InlineKeyboardButton(text="📝 合集管理", callback_data="manage_collections")
+        )
+        builder.row(
             InlineKeyboardButton(text="⚙️ 管理面板", callback_data="admin_panel")
         )
 
@@ -330,6 +333,54 @@ def create_push_collections_keyboard(collections: list, page: int, total_pages: 
 
     if page < total_pages:
         buttons.append(InlineKeyboardButton(text="下一页 ▶️", callback_data=f"push_page_{page + 1}"))
+
+    if buttons:
+        builder.row(*buttons)
+
+    # 返回主菜单
+    builder.row(InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu"))
+
+    return builder.as_markup()
+
+
+
+
+def create_manage_collections_keyboard(collections: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    """
+    创建合集管理列表键盘
+
+    Args:
+        collections: 合集列表
+        page: 当前页码
+        total_pages: 总页数
+
+    Returns:
+        InlineKeyboardMarkup
+    """
+    builder = InlineKeyboardBuilder()
+
+    # 合集列表，每个合集右侧有编辑按钮
+    for collection in collections:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"📦 {collection.name}",
+                callback_data=f"view_collection_{collection.deep_link_code}"
+            ),
+            InlineKeyboardButton(
+                text="✏️ 编辑",
+                callback_data=f"edit_collection_{collection.id}"
+            )
+        )
+
+    # 分页按钮
+    buttons = []
+    if page > 1:
+        buttons.append(InlineKeyboardButton(text="◀️ 上一页", callback_data=f"manage_page_{page - 1}"))
+
+    buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="page_info"))
+
+    if page < total_pages:
+        buttons.append(InlineKeyboardButton(text="下一页 ▶️", callback_data=f"manage_page_{page + 1}"))
 
     if buttons:
         builder.row(*buttons)
